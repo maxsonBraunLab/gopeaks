@@ -11,6 +11,9 @@ import (
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
+// number of base-pairs to clsuter nearby peaks
+const clusterWithin = 150
+
 func main() {
 
 	bam := flag.String("bam", "", "Bam file with ")
@@ -77,7 +80,7 @@ func main() {
 	fmt.Printf("Total Reads: %f\n", total)
 	fmt.Printf("Total Coverage: %d\n", sum)
 	fmt.Printf("Probability of read in non-zero bin: %e\n", p)
-	fmt.Printf("Max counts in bin: %f", max)
+	fmt.Printf("Max counts in bin: %f\n", max)
 
 	max1p := max + 1
 	probMap := map[int]float64{}
@@ -87,6 +90,7 @@ func main() {
 	}
 
 	var keepSlice []int
+	fmt.Printf("The number of overlaps: %d\n", len(overlaps))
 	for i := 0; i < len(overlaps); i++ {
 		cnt := overlaps[i]
 		if keep := filterBins(cnt, probMap, 15, 0.05); keep {
@@ -94,8 +98,18 @@ func main() {
 		}
 	}
 
-	binsKeep := fr.Subset(keepSlice)
+	binsKeep := binCounts.Subset(keepSlice)
+	fmt.Println(binsKeep)
 	fmt.Println(binsKeep.Length())
+
+	binsKeepMerge := binsKeep.Merge()
+	peaks := mergeWithin(binsKeepMerge, 150)
+	fmt.Println(peaks)
+	fmt.Println(peaks.Length())
+	err = peaks.ExportBed6("peaks.bed", false)
+	if err != nil {
+		logrus.Errorln(err)
+	}
 }
 
 // return true if bin is significant
@@ -129,6 +143,61 @@ func MaxIntSlice(slice []int) float64 {
 	return float64(max)
 }
 
+// merges ranges in obj that are "within" base pairs apart
+func mergeWithin(obj gn.GRanges, within int) gn.GRanges {
+
+	out := []gn.Range{}
+	outSeqs := []string{}
+
+	in := obj.Ranges
+	inSeqs := obj.Seqnames
+
+	for i := 0; i < len(in); i++ {
+
+		outLen := len(out)
+		if i == 0 {
+			out = append(out, in[i])
+			outSeqs = append(outSeqs, inSeqs[i])
+			continue
+		}
+
+		if outSeqs[len(outSeqs)-1] == inSeqs[i] {
+			if (out[outLen-1].To + 150) >= in[i].From {
+				out[outLen-1].To = in[i].To
+			} else {
+				// append
+				out = append(out, in[i])
+				outSeqs = append(outSeqs, inSeqs[i])
+			}
+		} else {
+			out = append(out, in[i])
+			outSeqs = append(outSeqs, inSeqs[i])
+		}
+	}
+
+	of := []int{}
+	ot := []int{}
+	os := []byte{}
+	for _, r := range out {
+		of = append(of, r.From)
+		ot = append(ot, r.To)
+		os = append(os, '*')
+	}
+	return gn.NewGRanges(outSeqs, of, ot, os)
+}
+
+// shift slice down, popping of the last element
+// and using zero as the first
+func shiftSlice(sl []int) []int {
+	var shsl []int
+	size := len(sl)
+	shsl = append(shsl, 0)
+	shsl = append(shsl, sl[:size-1]...)
+	return shsl
+}
+
+// countOverlaps counts the overlapping in r2 and reports them as
+// a new metadata column "overlap_counts" on r2
 func countOverlaps(r1 gn.GRanges, r2 gn.GRanges) gn.GRanges {
 	s, _ := gn.FindOverlaps(r1, r2)
 	idxMap := map[int]int{}
@@ -148,6 +217,8 @@ func countOverlaps(r1 gn.GRanges, r2 gn.GRanges) gn.GRanges {
 	return r1
 }
 
+// bin genome into overlapping ranges with step and slide
+// TODO: parametarize step and slide
 func binGenome(genome gn.Genome) gn.GRanges {
 	var seqnames []string
 	var ranges []gn.Range
@@ -175,6 +246,8 @@ func binGenome(genome gn.Genome) gn.GRanges {
 	return ret
 }
 
+// filters unknown chromosome names from a strings slice
+// using a regex of unwanted string matches
 func filterUnkownChroms(start []string) []string {
 	var ret []string
 	filt := `Un|_|EBV|N|M`
@@ -187,6 +260,7 @@ func filterUnkownChroms(start []string) []string {
 	return ret
 }
 
+// returns a genome of filtered chromosomes
 func KnownChroms(genome *gn.Genome) gn.Genome {
 
 	// make map of known seqs

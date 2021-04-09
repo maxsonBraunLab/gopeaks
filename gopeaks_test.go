@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/matryer/is"
@@ -28,6 +27,7 @@ func TestBinGenome(t *testing.T) {
 }
 
 func TestCountOverlaps(t *testing.T) {
+	is := is.New(t)
 	r1 := gn.NewGRanges(
 		[]string{"chr1", "chr1", "chr1", "chr1"},
 		[]int{1, 80, 90, 9},
@@ -40,7 +40,8 @@ func TestCountOverlaps(t *testing.T) {
 		[]int{8, 10, 95},
 		[]byte{'*', '*', '*'})
 	rCts := countOverlaps(r1, r2)
-	fmt.Println(rCts.MetaData...)
+	dat := rCts.MetaData[0].([]int)
+	is.Equal(len(dat), 4)
 }
 
 func TestMaxIntSlice(t *testing.T) {
@@ -49,4 +50,31 @@ func TestMaxIntSlice(t *testing.T) {
 	want := float64(300)
 	got := MaxIntSlice(tslice)
 	is.Equal(got, want) // should equal 300
+}
+
+func TestMergeWithin(t *testing.T) {
+	is := is.New(t)
+	r1 := gn.NewGRanges(
+		[]string{"chr1", "chr1", "chr1", "chr1", "chr1", "chr1", "chr2", "chr2", "chr2"},
+		[]int{1, 80, 90, 9, 400, 550, 3, 30, 80},
+		[]int{20, 100, 110, 40, 500, 600, 10, 40, 90},
+		[]byte{'*', '*', '*', '*', '*', '*', '*', '*', '*'})
+	want := gn.NewGRanges(
+		[]string{"chr1", "chr1", "chr2"},
+		[]int{1, 40, 3},
+		[]int{400, 600, 90},
+		[]byte{'*', '*', '*'})
+	got := mergeWithin(r1, 150)
+	is.True(got.Ranges[0].From == want.Ranges[0].From)
+	is.True(got.Ranges[2].From == want.Ranges[2].From)
+	is.True(got.Seqnames[2] == want.Seqnames[2])
+}
+
+func TestShiftSlice(t *testing.T) {
+	is := is.New(t)
+	start := []int{1, 2, 3, 4, 5}
+	want := []int{0, 1, 2, 3, 4}
+	got := shiftSlice(start)
+	is.Equal(want[0], got[0]) // first position should equal
+	is.Equal(want[4], got[4]) // last position should equal
 }
