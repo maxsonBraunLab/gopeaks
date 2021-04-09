@@ -25,7 +25,7 @@ func main() {
 
 	// read bamfile to GRanges
 	r := gn.GRanges{}
-	if err := r.ImportBamPairedEnd(*bam); err != nil {
+	if err := r.ImportBamSingleEnd(*bam); err != nil {
 		logrus.Errorf("Error %s", err.Error())
 		os.Exit(1)
 	}
