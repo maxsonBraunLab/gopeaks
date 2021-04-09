@@ -59,7 +59,7 @@ func main() {
 
 	overlaps := binCounts.GetMetaInt("overlap_counts")
 
-	// calculate coverage in non-zer bins
+	// calculate coverage in non-zero bins
 	sum := 0
 	n := 0
 	for i := 0; i < len(overlaps); i++ {
@@ -122,8 +122,8 @@ func BinomTest(count int, total float64, p float64) float64 {
 func MaxIntSlice(slice []int) float64 {
 	max := 0
 	for _, i := range slice {
-		if max < slice[i] {
-			max = slice[i]
+		if max < i {
+			max = i
 		}
 	}
 	return float64(max)

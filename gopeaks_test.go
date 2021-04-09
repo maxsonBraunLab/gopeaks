@@ -42,3 +42,11 @@ func TestCountOverlaps(t *testing.T) {
 	rCts := countOverlaps(r1, r2)
 	fmt.Println(rCts.MetaData...)
 }
+
+func TestMaxIntSlice(t *testing.T) {
+	is := is.New(t)
+	tslice := []int{1, 2, 3, 4, 5, 5, 7, 8, 0, 10, 300}
+	want := float64(300)
+	got := MaxIntSlice(tslice)
+	is.Equal(got, want) // should equal 300
+}
