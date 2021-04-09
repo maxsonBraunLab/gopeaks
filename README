@@ -1,13 +1,12 @@
 # README
 
-Go peaks is a go implementation of callpeaks
-
+gopeaks is a simple peak caller for CUT&TAG data implemented in goalng
 
 ## Overview
 
 Calculate coverage set.. reads overlapping regions with bin size (bin 100, step 50)
 
-Subtract IGG
+#Subtract IGG
 
 Calculate total coverage (sum all reads?)
 
