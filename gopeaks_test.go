@@ -10,7 +10,7 @@ import (
 
 func TestFilterUnknownChroms(t *testing.T) {
 	is := is.New(t)
-	chroms := []string{"ChrUn", "chrUn_test", "chrM", "chr1_blah", "EBV", "chr3", "chr1", "chr4"}
+	chroms := []string{"ChrUn", "chrUn_test", "chrUn_GL000218v1", "chrM", "chr1_blah", "EBV", "chr3", "chr1", "chr4"}
 	got := filterUnkownChroms(chroms)
 	want := []string{"chr3", "chr1", "chr4"}
 	is.Equal(got, want) // should equal
@@ -40,5 +40,5 @@ func TestCountOverlaps(t *testing.T) {
 		[]int{8, 10, 95},
 		[]byte{'*', '*', '*'})
 	rCts := countOverlaps(r1, r2)
-	fmt.Println(rCts)
+	fmt.Println(rCts.MetaData...)
 }

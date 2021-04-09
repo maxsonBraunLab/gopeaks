@@ -8,6 +8,7 @@ import (
 
 	gn "github.com/pbenner/gonetics"
 	"github.com/sirupsen/logrus"
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 func main() {
@@ -25,7 +26,7 @@ func main() {
 
 	// read bamfile to GRanges
 	r := gn.GRanges{}
-	if err := r.ImportBamSingleEnd(*bam); err != nil {
+	if err := r.ImportBamPairedEnd(*bam); err != nil {
 		logrus.Errorf("Error %s", err.Error())
 		os.Exit(1)
 	}
@@ -40,7 +41,7 @@ func main() {
 	}
 
 	if *cs == "" {
-		logrus.Infoln("Attempting to read chromsizes from bam header...")
+		logrus.Infoln("Reading chromsizes from bam header...")
 		g, err = gn.BamImportGenome(*bam)
 		if err != nil {
 			logrus.Infoln("Genome could not be determined from bam file")
@@ -48,18 +49,84 @@ func main() {
 	}
 
 	gf := KnownChroms(&g)
-	r.FilterGenome(gf)
+	fr := r.FilterGenome(gf)
 
-	logrus.Infoln("Total Coverage: %s", r.Length())
-	logrus.Infoln("Total Coverage: %s", r.Length())
+	total := float64(fr.Length())
 
-	fmt.Println(r.Row(1))
+	// calculating coverage
+	binRanges := binGenome(gf)
+	binCounts := countOverlaps(binRanges, r)
 
-	// binRanges := binGenome(gf)
-	// binCounts := countOverlaps(binRanges, r)
+	overlaps := binCounts.GetMetaInt("overlap_counts")
 
-	// allCts := binCounts.MetaData
+	// calculate coverage in non-zer bins
+	sum := 0
+	n := 0
+	for i := 0; i < len(overlaps); i++ {
+		if overlaps[i] != 0 {
+			sum += overlaps[i]
+			n += 1
+		}
+	}
 
+	// probability of read in non-zero bin
+	p := (float64(sum) / float64(n)) / float64(total)
+
+	max := MaxIntSlice(overlaps)
+
+	fmt.Printf("Total Reads: %f\n", total)
+	fmt.Printf("Total Coverage: %d\n", sum)
+	fmt.Printf("Probability of read in non-zero bin: %e\n", p)
+	fmt.Printf("Max counts in bin: %f", max)
+
+	max1p := max + 1
+	probMap := map[int]float64{}
+	for i := 0; float64(i) < max1p; i++ {
+		bt := BinomTest(i, total, p)
+		probMap[i] = bt
+	}
+
+	var keepSlice []int
+	for i := 0; i < len(overlaps); i++ {
+		cnt := overlaps[i]
+		if keep := filterBins(cnt, probMap, 15, 0.05); keep {
+			keepSlice = append(keepSlice, i)
+		}
+	}
+
+	binsKeep := fr.Subset(keepSlice)
+	fmt.Println(binsKeep.Length())
+}
+
+// return true if bin is significant
+func filterBins(c int, cMap map[int]float64, minReads int, threshold float64) bool {
+	p := 1.0
+	if c > minReads {
+		p = cMap[c]
+	}
+	if p < threshold {
+		return true
+	}
+	return false
+}
+
+// BinomTest returns the p-value testing the null hypothesis that the
+// probability of a positive Bernoulli trial is p
+func BinomTest(count int, total float64, p float64) float64 {
+	dist := distuv.Binomial{N: float64(total) - float64(count), P: p}
+	return dist.Prob(float64(count))
+}
+
+// MaxIntSlice returns the Max of an []Int
+// cast as a float64
+func MaxIntSlice(slice []int) float64 {
+	max := 0
+	for _, i := range slice {
+		if max < slice[i] {
+			max = slice[i]
+		}
+	}
+	return float64(max)
 }
 
 func countOverlaps(r1 gn.GRanges, r2 gn.GRanges) gn.GRanges {
@@ -68,7 +135,7 @@ func countOverlaps(r1 gn.GRanges, r2 gn.GRanges) gn.GRanges {
 	for i := 0; i < len(s); i++ {
 		idxMap[s[i]] += 1
 	}
-	olaps := []int{}
+	var olaps []int
 	for i := 0; i < r1.Length(); i++ {
 		var cnt int
 		cnt, ok := idxMap[i]
