@@ -6,4 +6,4 @@ gopeaks is a simple peak caller for CUT&TAG data implemented in goalng
 
 [] clean up / refactor
 
-
+[] fix binGenome function
