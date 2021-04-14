@@ -1,2 +1,4 @@
 *.bam
 *.bai
+*gopeaks
+*.bed
