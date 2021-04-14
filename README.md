@@ -1,4 +1,4 @@
-[![Go](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml/badge.svg)](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml)
+[![Go](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml)
 
 # README
 
