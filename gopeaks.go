@@ -19,6 +19,8 @@ func main() {
 
 	bam := flag.String("bam", "", "Bam file with ")
 	cs := flag.String("cs", "", "Supply chromosome sizes for the alignment genome if not found in the bam header")
+	within := flag.Int("mdist", 150, "Merge distance for nearby peaks")
+	outfile := flag.String("of", "peaks.bed", "Output file to write peaks to")
 
 	flag.Parse()
 
@@ -101,9 +103,9 @@ func main() {
 
 	binsKeep := binCounts.Subset(keepSlice)
 	binsKeepMerge := binsKeep.Merge()
-	peaks := mergeWithin(binsKeepMerge, 150)
+	peaks := mergeWithin(binsKeepMerge, *within)
 	fmt.Printf("Numbe of peaks founds: %d\n", peaks.Length())
-	err = peaks.ExportBed6("peaks.bed", false)
+	err = peaks.ExportBed6(*outfile, false)
 	if err != nil {
 		logrus.Errorln(err)
 	}
@@ -159,7 +161,7 @@ func mergeWithin(obj gn.GRanges, within int) gn.GRanges {
 		}
 
 		if outSeqs[len(outSeqs)-1] == inSeqs[i] {
-			if (out[outLen-1].To + 150) >= in[i].From {
+			if (out[outLen-1].To + within) >= in[i].From {
 				out[outLen-1].To = in[i].To
 			} else {
 				// append
