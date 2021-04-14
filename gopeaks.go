@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sync"
 
 	gn "github.com/pbenner/gonetics"
 	"github.com/sirupsen/logrus"
@@ -99,13 +100,9 @@ func main() {
 	}
 
 	binsKeep := binCounts.Subset(keepSlice)
-	fmt.Println(binsKeep)
-	fmt.Println(binsKeep.Length())
-
 	binsKeepMerge := binsKeep.Merge()
 	peaks := mergeWithin(binsKeepMerge, 150)
-	fmt.Println(peaks)
-	fmt.Println(peaks.Length())
+	fmt.Printf("Numbe of peaks founds: %d\n", peaks.Length())
 	err = peaks.ExportBed6("peaks.bed", false)
 	if err != nil {
 		logrus.Errorln(err)
@@ -186,6 +183,15 @@ func mergeWithin(obj gn.GRanges, within int) gn.GRanges {
 	return gn.NewGRanges(outSeqs, of, ot, os)
 }
 
+// appendAll apppends a slice of ranges sequentially
+func appendAll(ranges []gn.GRanges) gn.GRanges {
+	ret := ranges[0]
+	for _, r := range ranges[1:] {
+		ret = ret.Append(r)
+	}
+	return ret
+}
+
 // shift slice down, popping of the last element
 // and using zero as the first
 func shiftSlice(sl []int) []int {
@@ -217,33 +223,97 @@ func countOverlaps(r1 gn.GRanges, r2 gn.GRanges) gn.GRanges {
 	return r1
 }
 
-// bin genome into overlapping ranges with step and slide
-// TODO: parametarize step and slide
-func binGenome(genome gn.Genome) gn.GRanges {
+func binChrom(genome gn.Genome, chr string) gn.GRanges {
 	var seqnames []string
 	var ranges []gn.Range
 	var strand []byte
 	step := 100
 	slide := 50
-
 	start := 0
-	name := "chr1"
-	for start <= genome.Lengths[0]-step {
+
+	len, _ := genome.SeqLength(chr)
+	count := 0
+	for start <= len-step {
 		end := start + step
 		ranges = append(ranges, gn.Range{From: start, To: end})
-		seqnames = append(seqnames, name)
+		seqnames = append(seqnames, chr)
 		start += slide
+		count += 1
 	}
-	strand = make([]byte, len(seqnames))
-	for i := 0; i < len(seqnames); i++ {
+
+	strand = make([]byte, count)
+	for i := 0; i < count; i++ {
 		strand[i] = '*'
 	}
-	ret := gn.GRanges{Seqnames: seqnames,
-		Ranges: ranges,
-		Strand: strand,
-		Meta:   gn.Meta{}}
+
+	ret := gn.GRanges{
+		Seqnames: seqnames,
+		Ranges:   ranges,
+		Strand:   strand,
+		Meta:     gn.Meta{},
+	}
 
 	return ret
+}
+
+// bin Result stores the chromosome bin result
+// and it's chromosome sort order
+type BinnedRangesOrder struct {
+	Order  int
+	Ranges gn.GRanges
+}
+
+// read results into output channel
+func binChromToChan(g gn.Genome, chr string, out chan BinnedRangesOrder) {
+	var res BinnedRangesOrder
+	for i, s := range g.Seqnames {
+		if s == chr {
+			res.Order = i
+			res.Ranges = binChrom(g, chr)
+			out <- res
+		}
+	}
+}
+
+func handleChromBins(input chan BinnedRangesOrder, output chan gn.GRanges, wg *sync.WaitGroup) {
+
+	// parse input into slice
+	var gRes []BinnedRangesOrder
+	for r := range input {
+		gRes = append(gRes, r)
+		wg.Done()
+	}
+
+	var ret gn.GRanges
+	// append to output preserving chr order
+	for i := 0; i < len(gRes); i++ {
+		for _, g := range gRes {
+			if g.Order == i {
+				ret = ret.Append(g.Ranges)
+			}
+		}
+	}
+	output <- ret
+}
+
+// bin genome into overlapping ranges with step and slide
+// bin genome creates coverages for each chromosome in separate go routines
+// then merges them
+// TODO: parametarize step and slide
+func binGenome(genome gn.Genome) gn.GRanges {
+	input := make(chan BinnedRangesOrder)
+	output := make(chan gn.GRanges)
+	var wg sync.WaitGroup
+	go handleChromBins(input, output, &wg)
+	defer close(output)
+	for _, chr := range genome.Seqnames {
+		wg.Add(1)
+		go binChromToChan(genome, chr, input)
+	}
+
+	wg.Wait()
+	close(input)
+	return <-output
 }
 
 // filters unknown chromosome names from a strings slice

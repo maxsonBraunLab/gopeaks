@@ -17,13 +17,20 @@ func TestFilterUnknownChroms(t *testing.T) {
 
 func TestBinGenome(t *testing.T) {
 	is := is.New(t)
-	seqnames := []string{"chr1", "chr2"}
-	lengths := []int{1000, 3000000}
+	seqnames := []string{"chr1", "chr2", "chr3", "chr4"}
+	lengths := []int{1000, 2000, 5000, 300}
 	g := gn.NewGenome(seqnames, lengths)
 	bR := binGenome(g)
-	is.Equal(len(bR.Seqnames), 19) // should be 19
-	is.Equal(bR.Ranges[0].From, 0) // should start at 0
-	is.Equal(bR.Ranges[0].From, 0) // should start at 0
+
+	is.Equal(bR.Seqnames[0], "chr1")                  // first should be chr1
+	is.Equal(bR.Seqnames[len(bR.Seqnames)-1], "chr4") // last should be chr4
+
+	// test that only the four chroms
+	set := make(map[string]bool)
+	for _, k := range bR.Seqnames {
+		set[k] = true
+	}
+	is.Equal(len(set), 4) // should be only four chroms
 }
 
 func TestCountOverlaps(t *testing.T) {
@@ -77,4 +84,29 @@ func TestShiftSlice(t *testing.T) {
 	got := shiftSlice(start)
 	is.Equal(want[0], got[0]) // first position should equal
 	is.Equal(want[4], got[4]) // last position should equal
+}
+
+func TestAppendGranges(t *testing.T) {
+	is := is.New(t)
+	r1 := gn.NewGRanges(
+		[]string{"chr1", "chr1", "chr1", "chr1"},
+		[]int{1, 80, 90, 9},
+		[]int{20, 100, 110, 40},
+		[]byte{'*', '*', '*', '*'})
+
+	r2 := gn.NewGRanges(
+		[]string{"chr2", "chr2", "chr2"},
+		[]int{4, 8, 90},
+		[]int{8, 10, 95},
+		[]byte{'*', '*', '*'})
+
+	r3 := gn.NewGRanges(
+		[]string{"chr3", "chr3", "chr3"},
+		[]int{4, 8, 90},
+		[]int{8, 10, 95},
+		[]byte{'*', '*', '*'})
+
+	chrBins := []gn.GRanges{r1, r2, r3}
+	all := appendAll(chrBins)
+	is.Equal(all.Length(), 10)
 }
