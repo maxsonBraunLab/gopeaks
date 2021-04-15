@@ -7,6 +7,3 @@ gopeaks is a simple peak caller for CUT&TAG data implemented in goalng
 # ToDO
 
 [] add igg/input normalization
-
-[] clean up / refactor
-

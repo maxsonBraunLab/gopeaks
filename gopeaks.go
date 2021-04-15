@@ -3,8 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 
 	gn "github.com/pbenner/gonetics"
@@ -18,7 +20,6 @@ func main() {
 	cs := flag.String("cs", "", "Supply chromosome sizes for the alignment genome if not found in the bam header")
 	within := flag.Int("mdist", 150, "Merge distance for nearby peaks")
 	outfile := flag.String("of", "peaks.bed", "Output file to write peaks to")
-	// outwig := flag.String("ow", "coverage.bw", "Output coverage bigwig file")
 	minreads := flag.Int("mr", 15, "Min reads per coverage bin to be considered")
 	pval := flag.Float64("pval", 0.05, "Pvalue threshold for keeping a peak bin")
 	step := flag.Int("step", 100, "Bin size for coverage bins")
@@ -61,6 +62,8 @@ func main() {
 	gf := KnownChroms(&g)
 	fr := r.FilterGenome(gf)
 
+	writeBigWig(fr, *bam)
+
 	// calculate coverage
 	binRanges := binGenome(g, *step, *slide)
 	binCounts := countOverlaps(binRanges, fr)
@@ -69,7 +72,7 @@ func main() {
 	// callpeaks
 	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval)
 
-	fmt.Printf("Numbe of peaks found: %d\n", peaks.Length())
+	fmt.Printf("Number of peaks found: %d\n", peaks.Length())
 	err = peaks.ExportBed6(*outfile, false)
 	if err != nil {
 		logrus.Errorln(err)
@@ -346,4 +349,31 @@ func KnownChroms(genome *gn.Genome) gn.Genome {
 		}
 	}
 	return gn.NewGenome(seqnames, lengths)
+}
+
+func makeTrackName(infile string) string {
+	return strings.Replace(infile, ".bam", ".bw", 1)
+}
+
+func writeBigWig(bamRanges gn.GRanges, bamfilename string) {
+	outfilename := makeTrackName(bamfilename)
+	var filenamesTreatment []string
+	var filenamesControl []string
+	var fraglenTreatment []int
+	var fraglenControl []int
+
+	optionsList := []interface{}{
+		gn.OptionEstimateFraglen{Value: true},
+		gn.OptionNormalizeTrack{Value: "cpm"},
+	}
+	filenamesTreatment = append(filenamesTreatment, bamfilename)
+	result, _, _, _ := gn.BamCoverage(outfilename, filenamesTreatment, filenamesControl, fraglenTreatment, fraglenControl, optionsList...)
+	fmt.Printf("Writing track `%s'... ", outfilename)
+	parameters := gn.DefaultBigWigParameters()
+	if err := (gn.GenericTrack{Track: result}).ExportBigWig(outfilename, parameters); err != nil {
+		log.Fatal(err)
+	} else {
+		fmt.Println("done")
+	}
+
 }
