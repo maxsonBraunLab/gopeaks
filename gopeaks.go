@@ -12,15 +12,17 @@ import (
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
-// number of base-pairs to clsuter nearby peaks
-const clusterWithin = 150
-
 func main() {
 
 	bam := flag.String("bam", "", "Bam file with ")
 	cs := flag.String("cs", "", "Supply chromosome sizes for the alignment genome if not found in the bam header")
 	within := flag.Int("mdist", 150, "Merge distance for nearby peaks")
 	outfile := flag.String("of", "peaks.bed", "Output file to write peaks to")
+	// outwig := flag.String("ow", "coverage.bw", "Output coverage bigwig file")
+	minreads := flag.Int("mr", 15, "Min reads per coverage bin to be considered")
+	pval := flag.Float64("pval", 0.05, "Pvalue threshold for keeping a peak bin")
+	step := flag.Int("step", 100, "Bin size for coverage bins")
+	slide := flag.Int("slide", 50, "Slide size for coverage bins")
 
 	flag.Parse()
 
@@ -43,72 +45,74 @@ func main() {
 		err := g.Import(*cs)
 		if err != nil {
 			logrus.Errorln("Failed to import chromsizes file")
+			os.Exit(1)
 		}
 	}
 
 	if *cs == "" {
-		logrus.Infoln("Reading chromsizes from bam header...")
+		fmt.Println("Reading chromsizes from bam header...")
 		g, err = gn.BamImportGenome(*bam)
 		if err != nil {
-			logrus.Infoln("Genome could not be determined from bam file")
+			fmt.Println("Genome could not be determined from bam file")
 		}
 	}
 
 	gf := KnownChroms(&g)
 	fr := r.FilterGenome(gf)
 
-	total := float64(fr.Length())
+	// calculate coverage
+	binRanges := binGenome(g, *step, *slide)
+	binCounts := countOverlaps(binRanges, fr)
+	nreads := fr.Length()
 
-	// calculating coverage
-	binRanges := binGenome(gf)
-	binCounts := countOverlaps(binRanges, r)
+	// callpeaks
+	peaks := callpeaks(binCounts, float64(nreads), *within, *minreads, *pval)
 
-	overlaps := binCounts.GetMetaInt("overlap_counts")
+	fmt.Printf("Numbe of peaks founds: %d\n", peaks.Length())
+	err = peaks.ExportBed6(*outfile, false)
+	if err != nil {
+		logrus.Errorln(err)
+	}
+}
 
+func callpeaks(coverage gn.GRanges, total float64, within int, minreads int, pval float64) gn.GRanges {
+
+	covCounts := coverage.GetMetaInt("overlap_counts")
 	// calculate coverage in non-zero bins
 	sum := 0
 	n := 0
-	for i := 0; i < len(overlaps); i++ {
-		if overlaps[i] != 0 {
-			sum += overlaps[i]
+	for i := 0; i < len(covCounts); i++ {
+		if covCounts[i] != 0 {
+			sum += covCounts[i]
 			n += 1
 		}
 	}
 
 	// probability of read in non-zero bin
 	p := (float64(sum) / float64(n)) / float64(total)
+	max := MaxIntSlice(covCounts)
 
-	max := MaxIntSlice(overlaps)
-
-	fmt.Printf("Total Reads: %f\n", total)
-	fmt.Printf("Total Coverage: %d\n", sum)
-	fmt.Printf("Probability of read in non-zero bin: %e\n", p)
-	fmt.Printf("Max counts in bin: %f\n", max)
-
+	// calculate probability map
 	max1p := max + 1
 	probMap := map[int]float64{}
 	for i := 0; float64(i) < max1p; i++ {
-		bt := BinomTest(i, total, p)
-		probMap[i] = bt
+		probMap[i] = BinomTest(i, total, p)
 	}
 
+	// filter coverage bins
 	var keepSlice []int
-	fmt.Printf("The number of overlaps: %d\n", len(overlaps))
-	for i := 0; i < len(overlaps); i++ {
-		cnt := overlaps[i]
-		if keep := filterBins(cnt, probMap, 15, 0.05); keep {
+	for i := 0; i < len(covCounts); i++ {
+		cnt := covCounts[i]
+		if keep := filterBins(cnt, probMap, minreads, pval); keep {
 			keepSlice = append(keepSlice, i)
 		}
 	}
 
-	binsKeep := binCounts.Subset(keepSlice)
+	// merge overlapping and nearby peaks
+	binsKeep := coverage.Subset(keepSlice)
 	binsKeepMerge := binsKeep.Merge()
-	peaks := mergeWithin(binsKeepMerge, *within)
-	fmt.Printf("Numbe of peaks founds: %d\n", peaks.Length())
-	err = peaks.ExportBed6(*outfile, false)
-	if err != nil {
-		logrus.Errorln(err)
-	}
+	peaks := mergeWithin(binsKeepMerge, within)
+	return peaks
 }
 
 // return true if bin is significant
@@ -117,6 +121,7 @@ func filterBins(c int, cMap map[int]float64, minReads int, threshold float64) bo
 	if c > minReads {
 		p = cMap[c]
 	}
+	fmt.Println(cMap[c])
 	if p < threshold {
 		return true
 	}
@@ -185,25 +190,6 @@ func mergeWithin(obj gn.GRanges, within int) gn.GRanges {
 	return gn.NewGRanges(outSeqs, of, ot, os)
 }
 
-// appendAll apppends a slice of ranges sequentially
-func appendAll(ranges []gn.GRanges) gn.GRanges {
-	ret := ranges[0]
-	for _, r := range ranges[1:] {
-		ret = ret.Append(r)
-	}
-	return ret
-}
-
-// shift slice down, popping of the last element
-// and using zero as the first
-func shiftSlice(sl []int) []int {
-	var shsl []int
-	size := len(sl)
-	shsl = append(shsl, 0)
-	shsl = append(shsl, sl[:size-1]...)
-	return shsl
-}
-
 // countOverlaps counts the overlapping in r2 and reports them as
 // a new metadata column "overlap_counts" on r2
 func countOverlaps(r1 gn.GRanges, r2 gn.GRanges) gn.GRanges {
@@ -225,14 +211,11 @@ func countOverlaps(r1 gn.GRanges, r2 gn.GRanges) gn.GRanges {
 	return r1
 }
 
-func binChrom(genome gn.Genome, chr string) gn.GRanges {
+func binChrom(genome gn.Genome, chr string, step, slide int) gn.GRanges {
 	var seqnames []string
 	var ranges []gn.Range
 	var strand []byte
-	step := 100
-	slide := 50
 	start := 0
-
 	len, _ := genome.SeqLength(chr)
 	count := 0
 	for start <= len-step {
@@ -266,12 +249,12 @@ type BinnedRangesOrder struct {
 }
 
 // read results into output channel
-func binChromToChan(g gn.Genome, chr string, out chan BinnedRangesOrder) {
+func binChromToChan(g gn.Genome, chr string, out chan BinnedRangesOrder, step, slide int) {
 	var res BinnedRangesOrder
 	for i, s := range g.Seqnames {
 		if s == chr {
 			res.Order = i
-			res.Ranges = binChrom(g, chr)
+			res.Ranges = binChrom(g, chr, step, slide)
 			out <- res
 		}
 	}
@@ -300,9 +283,7 @@ func handleChromBins(input chan BinnedRangesOrder, output chan gn.GRanges, wg *s
 
 // bin genome into overlapping ranges with step and slide
 // bin genome creates coverages for each chromosome in separate go routines
-// then merges them
-// TODO: parametarize step and slide
-func binGenome(genome gn.Genome) gn.GRanges {
+func binGenome(genome gn.Genome, step int, slide int) gn.GRanges {
 	input := make(chan BinnedRangesOrder)
 	output := make(chan gn.GRanges)
 	var wg sync.WaitGroup
@@ -310,7 +291,7 @@ func binGenome(genome gn.Genome) gn.GRanges {
 	defer close(output)
 	for _, chr := range genome.Seqnames {
 		wg.Add(1)
-		go binChromToChan(genome, chr, input)
+		go binChromToChan(genome, chr, input, step, slide)
 	}
 
 	wg.Wait()
