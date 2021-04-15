@@ -23,6 +23,7 @@ func main() {
 	pval := flag.Float64("pval", 0.05, "Pvalue threshold for keeping a peak bin")
 	step := flag.Int("step", 100, "Bin size for coverage bins")
 	slide := flag.Int("slide", 50, "Slide size for coverage bins")
+	minwidth := flag.Int("minwidth", 150, "Minimum width to be considered a peak")
 
 	flag.Parse()
 
@@ -66,16 +67,16 @@ func main() {
 	nreads := fr.Length()
 
 	// callpeaks
-	peaks := callpeaks(binCounts, float64(nreads), *within, *minreads, *pval)
+	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval)
 
-	fmt.Printf("Numbe of peaks founds: %d\n", peaks.Length())
+	fmt.Printf("Numbe of peaks found: %d\n", peaks.Length())
 	err = peaks.ExportBed6(*outfile, false)
 	if err != nil {
 		logrus.Errorln(err)
 	}
 }
 
-func callpeaks(coverage gn.GRanges, total float64, within int, minreads int, pval float64) gn.GRanges {
+func callpeaks(coverage gn.GRanges, total float64, within, width, minreads int, pval float64) gn.GRanges {
 
 	covCounts := coverage.GetMetaInt("overlap_counts")
 	// calculate coverage in non-zero bins
@@ -112,7 +113,20 @@ func callpeaks(coverage gn.GRanges, total float64, within int, minreads int, pva
 	binsKeep := coverage.Subset(keepSlice)
 	binsKeepMerge := binsKeep.Merge()
 	peaks := mergeWithin(binsKeepMerge, within)
-	return peaks
+	peaksFilt := filterPeakWidth(peaks, width)
+	return peaksFilt
+}
+
+// filterPeakWidth returns a granges object with ranges having width
+// greater than the provided width
+func filterPeakWidth(peaks gn.GRanges, width int) gn.GRanges {
+	var keepIdx []int
+	for i := 0; i < len(peaks.Seqnames); i++ {
+		if (peaks.Ranges[i].To - peaks.Ranges[i].From) > width {
+			keepIdx = append(keepIdx, i)
+		}
+	}
+	return peaks.Subset(keepIdx)
 }
 
 // return true if bin is significant
@@ -121,7 +135,6 @@ func filterBins(c int, cMap map[int]float64, minReads int, threshold float64) bo
 	if c > minReads {
 		p = cMap[c]
 	}
-	fmt.Println(cMap[c])
 	if p < threshold {
 		return true
 	}
