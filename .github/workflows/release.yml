@@ -29,5 +29,9 @@ jobs:
         with:
           version: latest
           args: release --rm-dist
+        build:
+            goarch:
+              - amd64
+              - arm64
         env:
           GITHUB_TOKEN: ${{ secrets.GO_RELEASE_TOKEN }}
