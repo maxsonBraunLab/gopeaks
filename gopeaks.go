@@ -25,7 +25,6 @@ func main() {
 	slide := flag.Int("slide", 50, "Slide size for coverage bins")
 	minwidth := flag.Int("minwidth", 250, "Minimum width to be considered a peak")
 	control := flag.String("control", "", "Bam file with contriol signal to be subtracted")
-
 	flag.Parse()
 
 	// require args

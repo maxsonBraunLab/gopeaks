@@ -6,4 +6,34 @@ gopeaks is a simple peak caller for CUT&TAG data implemented in goalng
 
 # ToDO
 
-[] add igg/input normalization
+```
+./gopeaks 
+Usage of ./gopeaks:
+  -bam string
+        Bam file with 
+  -control string
+        Bam file with contriol signal to be subtracted
+  -cs string
+        Supply chromosome sizes for the alignment genome if not found in the bam header
+  -mdist int
+        Merge distance for nearby peaks (default 150)
+  -minwidth int
+        Minimum width to be considered a peak (default 250)
+  -mr int
+        Min reads per coverage bin to be considered (default 15)
+  -of string
+        Output file to write peaks to (default "peaks.bed")
+  -pval float
+        Pvalue threshold for keeping a peak bin (default 0.05)
+  -slide int
+        Slide size for coverage bins (default 50)
+  -step int
+        Bin size for coverage bins (default 100)
+```
+
+## Example Usage
+
+
+```
+./gopeaks -bam ../chr1.bam -control chr1_igg.bam -cs data/hg38.known.chrom.sizes -of chr1.bed
+```
