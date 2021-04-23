@@ -3,10 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"math"
 	"os"
 	"regexp"
-	"strings"
 	"sync"
 
 	gn "github.com/pbenner/gonetics"
@@ -24,12 +23,13 @@ func main() {
 	pval := flag.Float64("pval", 0.05, "Pvalue threshold for keeping a peak bin")
 	step := flag.Int("step", 100, "Bin size for coverage bins")
 	slide := flag.Int("slide", 50, "Slide size for coverage bins")
-	minwidth := flag.Int("minwidth", 150, "Minimum width to be considered a peak")
+	minwidth := flag.Int("minwidth", 250, "Minimum width to be considered a peak")
+	control := flag.String("control", "", "Bam file with contriol signal to be subtracted")
 
 	flag.Parse()
 
-	// require bamfile
-	if *bam == "" {
+	// require args
+	if len(os.Args) < 2 || *bam == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -62,12 +62,29 @@ func main() {
 	gf := KnownChroms(&g)
 	fr := r.FilterGenome(gf)
 
-	writeBigWig(fr, *bam)
-
 	// calculate coverage
 	binRanges := binGenome(g, *step, *slide)
 	binCounts := countOverlaps(binRanges, fr)
 	nreads := fr.Length()
+
+	// calculate control coverage and subtract signal
+	if *control != "" {
+		c := gn.GRanges{}
+		if err := c.ImportBamPairedEnd(*control); err != nil {
+			logrus.Errorf("Error %s", err.Error())
+			os.Exit(1)
+		}
+
+		cr := c.FilterGenome(gf)
+		fmt.Println(cr)
+		ctrlCounts := countOverlaps(binRanges, cr)
+
+		fmt.Println(ctrlCounts)
+
+		fmt.Println("normalizeing control regions")
+		binCounts = normalizeToControl(binCounts, ctrlCounts, c.Length(), fr.Length())
+		fmt.Println(binCounts)
+	}
 
 	// callpeaks
 	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval)
@@ -77,6 +94,51 @@ func main() {
 	if err != nil {
 		logrus.Errorln(err)
 	}
+}
+
+func subtractIntSlices(s1 []int, s2 []int) []int {
+	sub := make([]int, len(s1))
+	firstMap := map[int]int{}
+	for i, s := range s1 {
+		firstMap[i] = s
+	}
+	for i, o := range s2 {
+		num := firstMap[i] - o
+		if num < 0 {
+			num = 0
+		}
+		sub[i] = num
+	}
+	return sub
+}
+
+func sumIntSlice(sl []int) int {
+	var sum int
+	for _, o := range sl {
+		sum += o
+	}
+	return sum
+}
+
+func cpm(in []int, nreads int) []int {
+	var cpm []int
+	fmt.Println(nreads)
+	for _, o := range in {
+		num := int(math.Round(float64(o) * (1e6 / float64(nreads))))
+		cpm = append(cpm, num)
+	}
+	return cpm
+}
+
+func normalizeToControl(treat gn.GRanges, ctrl gn.GRanges, treads, creads int) gn.GRanges {
+	tcounts := treat.GetMeta("overlap_counts").([]int)
+	ccounts := ctrl.GetMeta("overlap_counts").([]int)
+
+	tcountsNorm := cpm(tcounts, treads)
+	ccountsNorm := cpm(ccounts, creads)
+	sub := subtractIntSlices(tcountsNorm, ccountsNorm)
+	treat.AddMeta("overlap_counts", sub)
+	return treat
 }
 
 func callpeaks(coverage gn.GRanges, total float64, within, width, minreads int, pval float64) gn.GRanges {
@@ -349,31 +411,4 @@ func KnownChroms(genome *gn.Genome) gn.Genome {
 		}
 	}
 	return gn.NewGenome(seqnames, lengths)
-}
-
-func makeTrackName(infile string) string {
-	return strings.Replace(infile, ".bam", ".bw", 1)
-}
-
-func writeBigWig(bamRanges gn.GRanges, bamfilename string) {
-	outfilename := makeTrackName(bamfilename)
-	var filenamesTreatment []string
-	var filenamesControl []string
-	var fraglenTreatment []int
-	var fraglenControl []int
-
-	optionsList := []interface{}{
-		gn.OptionEstimateFraglen{Value: true},
-		gn.OptionNormalizeTrack{Value: "cpm"},
-	}
-	filenamesTreatment = append(filenamesTreatment, bamfilename)
-	result, _, _, _ := gn.BamCoverage(outfilename, filenamesTreatment, filenamesControl, fraglenTreatment, fraglenControl, optionsList...)
-	fmt.Printf("Writing track `%s'... ", outfilename)
-	parameters := gn.DefaultBigWigParameters()
-	if err := (gn.GenericTrack{Track: result}).ExportBigWig(outfilename, parameters); err != nil {
-		log.Fatal(err)
-	} else {
-		fmt.Println("done")
-	}
-
 }

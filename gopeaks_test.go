@@ -76,3 +76,18 @@ func TestMergeWithin(t *testing.T) {
 	is.True(got.Ranges[2].From == want.Ranges[2].From)
 	is.True(got.Seqnames[2] == want.Seqnames[2])
 }
+
+func TestSubtractIntSlice(t *testing.T) {
+	is := is.New(t)
+	s1 := []int{1, 2, 3, 4, 5, 5, 6, 6, 7, 8, 8, 8, 9, 20}
+	s2 := []int{1, 1.0, 2, 5, 4, 3, 2, 4, 2, 3, 3, 2, 2, 2}
+	new := subtractIntSlices(s1, s2)
+	is.Equal(len(new), len(s1))
+}
+
+func TestSumIntSlice(t *testing.T) {
+	is := is.New(t)
+	s1 := []int{1, 2, 3, 4}
+	sum := sumIntSlice(s1)
+	is.Equal(sum, 10)
+}
