@@ -7,24 +7,21 @@ on:
 
 jobs:
   release:
-    strategy:
-      matrix:
-        go_version: [1.15.x]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v1
-      - name: Set up Go 1.13
+      - name: Set up Go 1.15
         uses: actions/setup-go@v1
         with:
-          go-version: ${{ matrix.go_version }}
+          go-version: 1.15
       - name: Test Pre-Publish
         run: make test
       - name: Build with xgo
         uses: crazy-max/ghaction-xgo@v1
         with:
           xgo_version: latest
-          go_version: ${{ matrix.go_version }}
+          go_version: 1.15
           dest: build
           prefix: autocannon-go
           targets: windows/386,windows/amd64,linux/amd64,darwin/amd64
