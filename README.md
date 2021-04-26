@@ -2,7 +2,16 @@
 
 # README
 
-gopeaks is a simple peak caller for CUT&TAG data implemented in goalng
+Simple peak caller for CUT&TAG data
+
+# Configure
+
+Download the latest release binary specific for your operating system:
+
+```
+wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/v0.1.5/gopeaks-linux-amd64
+chmod +x gopeaks
+```
 
 # Example Usage
 
