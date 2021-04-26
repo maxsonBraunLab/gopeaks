@@ -4,10 +4,10 @@
 
 gopeaks is a simple peak caller for CUT&TAG data implemented in goalng
 
-# ToDO
+# Example Usage
 
 ```
-./gopeaks 
+./gopeaks -h 
 Usage of ./gopeaks:
   -bam string
         Bam file with 
@@ -31,8 +31,7 @@ Usage of ./gopeaks:
         Bin size for coverage bins (default 100)
 ```
 
-## Example Usage
-
+## call peaks on a bam file using an IgG control
 
 ```
 ./gopeaks -bam ../chr1.bam -control chr1_igg.bam -cs data/hg38.known.chrom.sizes -of chr1.bed
