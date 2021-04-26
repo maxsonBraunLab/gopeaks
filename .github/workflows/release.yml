@@ -21,8 +21,8 @@ jobs:
           xgo_version: latest
           go_version: 1.15.11
           dest: build
-          prefix: autocannon-go
-          targets: windows/386,windows/amd64,linux/amd64,darwin/amd64
+          prefix: gopeaks
+          targets: windows/amd64,linux/amd64,darwin/amd64
           v: true
           x: false
           ldflags: -s -w
