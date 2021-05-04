@@ -55,6 +55,7 @@ func main() {
 		g, err = gn.BamImportGenome(*bam)
 		if err != nil {
 			fmt.Println("Genome could not be determined from bam file")
+			os.Exit(1)
 		}
 	}
 
@@ -75,21 +76,15 @@ func main() {
 		}
 
 		cr := c.FilterGenome(gf)
-		fmt.Println(cr)
 		ctrlCounts := countOverlaps(binRanges, cr)
-
-		fmt.Println(ctrlCounts)
-
-		fmt.Println("normalizeing control regions")
 		binCounts = normalizeToControl(binCounts, ctrlCounts, c.Length(), fr.Length())
-		fmt.Println(binCounts)
 	}
 
 	// callpeaks
 	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval)
 
-	fmt.Printf("Number of peaks found: %d\n", peaks.Length())
-	err = peaks.ExportBed6(*outfile, false)
+	fmt.Printf("Number of peaks found:\t%d\n", peaks.Length())
+	err = peaks.ExportBed3(*outfile, false)
 	if err != nil {
 		logrus.Errorln(err)
 	}
@@ -121,7 +116,6 @@ func sumIntSlice(sl []int) int {
 
 func cpm(in []int, nreads int) []int {
 	var cpm []int
-	fmt.Println(nreads)
 	for _, o := range in {
 		num := int(math.Round(float64(o) * (1e6 / float64(nreads))))
 		cpm = append(cpm, num)
