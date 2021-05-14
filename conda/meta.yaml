@@ -1,0 +1,22 @@
+{% set version = "0.1.6" %}
+
+package:
+  name: gopeaks
+  version: {{ version }}
+
+source:
+  url: https://github.com/maxsonBraunLab/gopeaks/archive/refs/tags/v{{ version }}.tar.gz
+
+build:
+  script: go build -o ${PREFIX}
+
+requirements:
+  build:
+    - go
+
+about:
+  home: https://github.com/maxsonBraunLab/gopeaks
+  summary: 'CUT&TAG peak caller'
+  description: |
+    Gopeaks calls peaks on CUT&TAG sequencing data.  
+  dev_url: https://github.com/maxsonBraunLab/gopeaks 
