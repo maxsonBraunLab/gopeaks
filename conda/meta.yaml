@@ -8,12 +8,14 @@ source:
   url: https://github.com/maxsonBraunLab/gopeaks/archive/refs/tags/v{{ version }}.tar.gz
 
 build:
-  script: go build -o ${PREFIX}
+  script: |
+    mkdir -p ${PREFIX}/bin
+    go build -o ${PREFIX}
 
 requirements:
   build:
     - gxx_linux-64
-    - go
+    - go=1.15.11
 
 about:
   home: https://github.com/maxsonBraunLab/gopeaks
