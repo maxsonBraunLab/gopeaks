@@ -12,6 +12,7 @@ build:
 
 requirements:
   build:
+    - gxx_linux-64
     - go
 
 about:
