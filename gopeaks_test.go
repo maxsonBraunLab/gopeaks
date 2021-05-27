@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/matryer/is"
@@ -47,8 +48,30 @@ func TestCountOverlaps(t *testing.T) {
 		[]int{8, 10, 95},
 		[]byte{'*', '*', '*'})
 	rCts := countOverlaps(r1, r2)
-	dat := rCts.MetaData[0].([]int)
+	dat := rCts.MetaData[0].([]float64)
 	is.Equal(len(dat), 4)
+}
+
+func TestNormalizeTocontrolCounts(t *testing.T) {
+	r1 := gn.NewGRanges(
+		[]string{"chr1", "chr1", "chr1", "chr1"},
+		[]int{1, 30, 50, 70},
+		[]int{20, 40, 60, 80},
+		[]byte{'*', '*', '*', '*'})
+
+	r2 := gn.NewGRanges(
+		[]string{"chr1", "chr1", "chr1", "chr1"},
+		[]int{1, 30, 50, 70},
+		[]int{20, 40, 60, 80},
+		[]byte{'*', '*', '*', '*'})
+
+	r1Cov := []float64{3.3, 4.5, 6.5, 1.1}
+	r2Cov := []float64{2.3, 5.5, 2.5, 1.5}
+	r1.AddMeta("overlap_counts", r1Cov)
+	r2.AddMeta("overlap_counts", r2Cov)
+
+	norm := normalizeToControl(r1, r2, r1.Length(), r2.Length())
+	fmt.Println(norm)
 }
 
 func TestMaxIntSlice(t *testing.T) {
@@ -77,17 +100,7 @@ func TestMergeWithin(t *testing.T) {
 	is.True(got.Seqnames[2] == want.Seqnames[2])
 }
 
-func TestSubtractIntSlice(t *testing.T) {
-	is := is.New(t)
-	s1 := []int{1, 2, 3, 4, 5, 5, 6, 6, 7, 8, 8, 8, 9, 20}
-	s2 := []int{1, 1.0, 2, 5, 4, 3, 2, 4, 2, 3, 3, 2, 2, 2}
-	new := subtractIntSlices(s1, s2)
-	is.Equal(len(new), len(s1))
-}
-
-func TestSumIntSlice(t *testing.T) {
-	is := is.New(t)
-	s1 := []int{1, 2, 3, 4}
-	sum := sumIntSlice(s1)
-	is.Equal(sum, 10)
+func TestBinomTest(t *testing.T) {
+	fl := BinomTest(4.5, 50, 0.5)
+	fmt.Println(fl)
 }

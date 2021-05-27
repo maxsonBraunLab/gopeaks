@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"math"
 	"os"
 	"regexp"
 	"sync"
@@ -23,7 +22,7 @@ func main() {
 	pval := flag.Float64("pval", 0.05, "Pvalue threshold for keeping a peak bin")
 	step := flag.Int("step", 100, "Bin size for coverage bins")
 	slide := flag.Int("slide", 50, "Slide size for coverage bins")
-	minwidth := flag.Int("minwidth", 250, "Minimum width to be considered a peak")
+	minwidth := flag.Int("minwidth", 150, "Minimum width to be considered a peak")
 	control := flag.String("control", "", "Bam file with contriol signal to be subtracted")
 	flag.Parse()
 
@@ -77,7 +76,7 @@ func main() {
 
 		cr := c.FilterGenome(gf)
 		ctrlCounts := countOverlaps(binRanges, cr)
-		binCounts = normalizeToControl(binCounts, ctrlCounts, c.Length(), fr.Length())
+		binCounts = normalizeToControl(binCounts, ctrlCounts, fr.Length(), cr.Length())
 	}
 
 	// callpeaks
@@ -90,79 +89,78 @@ func main() {
 	}
 }
 
-func subtractIntSlices(s1 []int, s2 []int) []int {
-	sub := make([]int, len(s1))
-	firstMap := map[int]int{}
+func scaleTreatToControl(counts []float64, s1 []float64, s2 []float64) []float64 {
+	scale := make([]float64, len(s1))
+	d1map := map[int]float64{}
 	for i, s := range s1 {
-		firstMap[i] = s
+		d1map[i] = s
 	}
+	var frac float64
 	for i, o := range s2 {
-		num := firstMap[i] - o
-		if num < 0 {
-			num = 0
+		if d1map[i] > 0 {
+			frac = o / d1map[i]
+			if frac > 1 {
+				frac = 1
+			}
+		} else {
+			frac = 1
 		}
-		sub[i] = num
+		scale[i] = counts[i] * (1 - frac)
 	}
-	return sub
+	return scale
 }
 
-func sumIntSlice(sl []int) int {
-	var sum int
-	for _, o := range sl {
-		sum += o
-	}
-	return sum
-}
-
-func cpm(in []int, nreads int) []int {
-	var cpm []int
+func cpm(in []float64, nreads float64) []float64 {
+	var cpm []float64
 	for _, o := range in {
-		num := int(math.Round(float64(o) * (1e6 / float64(nreads))))
+		num := o * (1e6 / nreads)
 		cpm = append(cpm, num)
 	}
 	return cpm
 }
 
 func normalizeToControl(treat gn.GRanges, ctrl gn.GRanges, treads, creads int) gn.GRanges {
-	tcounts := treat.GetMeta("overlap_counts").([]int)
-	ccounts := ctrl.GetMeta("overlap_counts").([]int)
+	tcounts := treat.GetMeta("overlap_counts").([]float64)
+	ccounts := ctrl.GetMeta("overlap_counts").([]float64)
 
-	tcountsNorm := cpm(tcounts, treads)
-	ccountsNorm := cpm(ccounts, creads)
-	sub := subtractIntSlices(tcountsNorm, ccountsNorm)
-	treat.AddMeta("overlap_counts", sub)
+	// calculate the cpm for each track
+	tcountsNorm := cpm(tcounts, float64(treads))
+	ccountsNorm := cpm(ccounts, float64(creads))
+
+	// scale the treatment
+	// scaled_counts = treat * 1-(control/treat)
+	scale := scaleTreatToControl(tcounts, tcountsNorm, ccountsNorm)
+	treat.AddMeta("overlap_counts", scale)
 	return treat
+}
+
+// get sum and number of nonzero coverage bins
+func getCoverage(cts []float64) (float64, float64) {
+	sum := 0.0
+	n := 0.0
+	for i := 0; i < len(cts); i++ {
+		if cts[i] != 0 {
+			sum += cts[i]
+			n += 1
+		}
+	}
+	return sum, n
 }
 
 func callpeaks(coverage gn.GRanges, total float64, within, width, minreads int, pval float64) gn.GRanges {
 
-	covCounts := coverage.GetMetaInt("overlap_counts")
-	// calculate coverage in non-zero bins
-	sum := 0
-	n := 0
-	for i := 0; i < len(covCounts); i++ {
-		if covCounts[i] != 0 {
-			sum += covCounts[i]
-			n += 1
-		}
-	}
+	ccts := coverage.GetMeta("overlap_counts").([]float64)
+	sum, n := getCoverage(ccts)
 
-	// probability of read in non-zero bin
+	// calculate probability of read in non-zero bin
 	p := (float64(sum) / float64(n)) / float64(total)
-	max := MaxIntSlice(covCounts)
-
-	// calculate probability map
-	max1p := max + 1
-	probMap := map[int]float64{}
-	for i := 0; float64(i) < max1p; i++ {
-		probMap[i] = BinomTest(i, total, p)
-	}
 
 	// filter coverage bins
 	var keepSlice []int
-	for i := 0; i < len(covCounts); i++ {
-		cnt := covCounts[i]
-		if keep := filterBins(cnt, probMap, minreads, pval); keep {
+	for i := 0; i < len(ccts); i++ {
+		cnt := ccts[i]
+		prob := BinomTest(cnt, total, p)
+		if keep := filterBins(prob, pval); keep && cnt > float64(minreads) {
 			keepSlice = append(keepSlice, i)
 		}
 	}
@@ -188,21 +186,17 @@ func filterPeakWidth(peaks gn.GRanges, width int) gn.GRanges {
 }
 
 // return true if bin is significant
-func filterBins(c int, cMap map[int]float64, minReads int, threshold float64) bool {
-	p := 1.0
-	if c > minReads {
-		p = cMap[c]
-	}
-	if p < threshold {
+func filterBins(prob, threshold float64) bool {
+	if prob < threshold {
 		return true
 	}
 	return false
 }
 
 // BinomTest returns the p-value testing the null hypothesis that the
-// probability of a positive Bernoulli trial is p
-func BinomTest(count int, total float64, p float64) float64 {
-	dist := distuv.Binomial{N: float64(total) - float64(count), P: p}
+// probability of a positive Bernoulli trial of probability p is p
+func BinomTest(count float64, total float64, p float64) float64 {
+	dist := distuv.Binomial{N: float64(total) - count, P: p}
 	return dist.Prob(float64(count))
 }
 
@@ -265,16 +259,16 @@ func mergeWithin(obj gn.GRanges, within int) gn.GRanges {
 // a new metadata column "overlap_counts" on r2
 func countOverlaps(r1 gn.GRanges, r2 gn.GRanges) gn.GRanges {
 	s, _ := gn.FindOverlaps(r1, r2)
-	idxMap := map[int]int{}
+	idxMap := map[int]float64{}
 	for i := 0; i < len(s); i++ {
 		idxMap[s[i]] += 1
 	}
-	var olaps []int
+	var olaps []float64
 	for i := 0; i < r1.Length(); i++ {
-		var cnt int
+		var cnt float64
 		cnt, ok := idxMap[i]
 		if !ok {
-			cnt = 0
+			cnt = 0.0
 		}
 		olaps = append(olaps, cnt)
 	}
