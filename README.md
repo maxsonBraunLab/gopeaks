@@ -9,7 +9,7 @@ Simple peak caller for CUT&TAG data
 Download the latest release binary specific for your operating system:
 
 ```
-wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/v0.1.5/gopeaks-linux-amd64
+wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/v0.1.7/gopeaks-linux-amd64
 chmod +x gopeaks
 ```
 
@@ -19,7 +19,7 @@ chmod +x gopeaks
 ./gopeaks -h 
 Usage of ./gopeaks:
   -bam string
-        Bam file with 
+        Bam file with
   -control string
         Bam file with contriol signal to be subtracted
   -cs string
@@ -27,7 +27,7 @@ Usage of ./gopeaks:
   -mdist int
         Merge distance for nearby peaks (default 150)
   -minwidth int
-        Minimum width to be considered a peak (default 250)
+        Minimum width to be considered a peak (default 150)
   -mr int
         Min reads per coverage bin to be considered (default 15)
   -of string
@@ -39,6 +39,7 @@ Usage of ./gopeaks:
   -step int
         Bin size for coverage bins (default 100)
 ```
+
 
 ## call peaks on a bam file using an IgG control
 
