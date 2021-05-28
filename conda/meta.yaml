@@ -1,4 +1,4 @@
-{% set version = "0.1.6" %}
+ set version = "0.1.6" %}
 
 package:
   name: gopeaks
@@ -10,7 +10,7 @@ source:
 build:
   script: |
     mkdir -p ${PREFIX}/bin
-    go build -o ${PREFIX}/bin
+    GOOS=linux GOARCH=amd64 go build -o ${PREFIX}/bin
 
 requirements:
   build:
