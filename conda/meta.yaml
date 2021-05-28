@@ -11,6 +11,12 @@ source:
 build:
   number: 0
   binary_relocation: false      
+
+requirements:
+   build:
+     - gxx_linux-64
+     - go
+     - go=1.15.11
       
 test: 
   commands: 
