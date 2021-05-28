@@ -5,7 +5,8 @@ package:
   version: {{ version }}
 
 source:
-  url: https://github.com/maxsonBraunLab/gopeaks/releases/download/v{{ version }}/gopeaks-linux-amd64
+   - url: https://github.com/maxsonBraunLab/gopeaks/releases/download/v{{ version }}/gopeaks-linux-amd64
+   - url: https://github.com/maxsonBraunLab/gopeaks/releases/download/v{{ version }}/gopeaks-darwin-10.12-amd64
 
 build:
   number: 0
@@ -21,5 +22,6 @@ about:
   summary: 'CUT&TAG peak caller'
 
 extra: 
-  - should_be_noarch_generic
-  - should_not_be_noarch_source
+  skip-lints:
+    - should_be_noarch_generic
+    - should_not_be_noarch_source
