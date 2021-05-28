@@ -1,4 +1,4 @@
 #!/bin/bash
-chmod a+x gopeaks*
 mkdir -p $PREFIX/bin
-cp gopeaks* $PREFIX/bin/
+GOOS=linux GOARCH=amd64 go build -o $PREFIX/bin/gopeaks main.go
+chmod a+x $PREFIX/bin/gopeaks

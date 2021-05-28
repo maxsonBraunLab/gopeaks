@@ -5,10 +5,8 @@ package:
   version: {{ version }}
 
 source:
-   - url: https://github.com/maxsonBraunLab/gopeaks/releases/download/v{{ version }}/gopeaks-linux-amd64
-     sha256: 41fbf1c5273e5b34febfaea5d3cf4650f0a250be21825e263dd7563ededcf8d8
-   - url: https://github.com/maxsonBraunLab/gopeaks/releases/download/v{{ version }}/gopeaks-darwin-10.12-amd64
-     sha256: 8c85374aa89ad328c75bdab94727a1d12fd9319470911dc3e0b6ee048bba322f
+   - url: https://github.com/maxsonBraunLab/gopeaks/archive/refs/tags/v{{ version }}.tar.gz
+     sha256: 85d98aea13617a211e82465629427904e42635973fd23540a309601ce15955da
 
 build:
   number: 0
