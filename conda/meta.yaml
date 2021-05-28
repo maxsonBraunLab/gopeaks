@@ -5,8 +5,7 @@ package:
   version: '{{ version }}'
 
 source:
-    - url: https://github.com/maxsonBraunLab/gopeaks/releases/download/v{{ version }}/gopeaks-darwin-10.12-amd64 
-    - url: https://github.com/maxsonBraunLab/gopeaks/releases/download/v{{ version }}/gopeaks-linux-amd64
+     url: https://github.com/maxsonBraunLab/gopeaks/releases/download/v{{ version }}/gopeaks-linux-amd64
 
 build:
     number: 0 
