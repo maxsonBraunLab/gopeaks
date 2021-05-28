@@ -1,25 +1,26 @@
-{% set version = "0.1.6" %}
+{% set version = "0.1.7" %}
 
 package:
   name: gopeaks
-  version: {{ version }}
+  version: '{{ version }}'
 
 source:
-  url: https://github.com/maxsonBraunLab/gopeaks/archive/refs/tags/v{{ version }}.tar.gz
+    - url: https://github.com/maxsonBraunLab/gopeaks/releases/download/v{{ version }}/gopeaks-darwin-10.12-amd64 
+    - url: https://github.com/maxsonBraunLab/gopeaks/releases/download/v{{ version }}/gopeaks-linux-amd64
 
 build:
-  script: |
-    mkdir -p ${PREFIX}/bin
-    GOOS=linux GOARCH=amd64 go build -o ${PREFIX}/bin
+    number: 0 
+    binary_relocation: false
 
-requirements:
-  build:
-    - gxx_linux-64
-    - go=1.15.11
+test: 
+    commands: 
+        - gopeaks -h
 
 about:
   home: https://github.com/maxsonBraunLab/gopeaks
+  license: MIT
   summary: 'CUT&TAG peak caller'
-  description: |
-    Gopeaks calls peaks on CUT&TAG sequencing data.  
-  dev_url: https://github.com/maxsonBraunLab/gopeaks 
+
+extra: 
+    - should_be_noarch_generic
+    - should_not_be_noarch_source
