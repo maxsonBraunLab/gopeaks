@@ -6,7 +6,13 @@ Simple peak caller for CUT&TAG data
 
 # Configure
 
-Download the latest release binary specific for your operating system:
+Download the latest release using conda: 
+
+```
+conda install -c jakevc gopeaks
+```
+
+Or download binary asset directly from github: 
 
 ```
 wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/v0.1.9/gopeaks-linux-amd64
