@@ -1,18 +1,52 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"regexp"
 	"sync"
+	"time"
 
 	gn "github.com/pbenner/gonetics"
 	"github.com/sirupsen/logrus"
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
+const gopeaks_version = "0.1.8"
+
+type Metrics struct {
+	Version string `json:"gopeaks_version"`
+	Date    string `json:"date"`
+	Elapsed string `json:"elapsed"`
+	Outfile string `json:"outfile"`
+	Peaks   int    `json:"peak_counts"`
+}
+
+func (m *Metrics) Log() {
+	resp, err := json.MarshalIndent(m, "", "\t")
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	f, err := os.Create("gopeaks-metrics.json")
+	defer f.Close()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	f.WriteString(string(resp))
+	f.WriteString("\n")
+}
+
 func main() {
+
+	// start time is what elapsed metric
+	// is calculated from
+	startTime := time.Now()
 
 	bam := flag.String("bam", "", "Bam file with ")
 	cs := flag.String("cs", "", "Supply chromosome sizes for the alignment genome if not found in the bam header")
@@ -24,7 +58,13 @@ func main() {
 	slide := flag.Int("slide", 50, "Slide size for coverage bins")
 	minwidth := flag.Int("minwidth", 150, "Minimum width to be considered a peak")
 	control := flag.String("control", "", "Bam file with contriol signal to be subtracted")
+	version := flag.Bool("version", false, "Print the current gopeaks version")
 	flag.Parse()
+
+	if *version {
+		fmt.Printf("gopeaks - %s\n", gopeaks_version)
+		os.Exit(0)
+	}
 
 	// require args
 	if len(os.Args) < 2 || *bam == "" {
@@ -82,11 +122,22 @@ func main() {
 	// callpeaks
 	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval)
 
-	fmt.Printf("Number of peaks found:\t%d\n", peaks.Length())
 	err = peaks.ExportBed3(*outfile, false)
 	if err != nil {
 		logrus.Errorln(err)
 	}
+
+	// write output metrics
+	metrics := &Metrics{
+		Version: gopeaks_version,
+		Date:    time.Now().Format("2006-01-02 3:4:5 PM"),
+		Elapsed: time.Since(startTime).String(),
+		Outfile: *outfile,
+		Peaks:   peaks.Length(),
+	}
+
+	// log metrics to file
+	metrics.Log()
 }
 
 func scaleTreatToControl(counts []float64, s1 []float64, s2 []float64) []float64 {
