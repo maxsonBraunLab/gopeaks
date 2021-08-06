@@ -14,24 +14,24 @@ import (
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
-const gopeaks_version = "0.1.8"
+const gopeaks_version = "0.1.9"
 
 type Metrics struct {
 	Version string `json:"gopeaks_version"`
 	Date    string `json:"date"`
 	Elapsed string `json:"elapsed"`
-	Outfile string `json:"outfile"`
+	Prefix  string `json:"prefix"`
 	Peaks   int    `json:"peak_counts"`
 }
 
-func (m *Metrics) Log() {
+func (m *Metrics) Log(op string) {
 	resp, err := json.MarshalIndent(m, "", "\t")
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	f, err := os.Create("gopeaks-metrics.json")
+	f, err := os.Create(op + "_gopeaks.json")
 	defer f.Close()
 	if err != nil {
 		fmt.Println(err)
@@ -51,7 +51,7 @@ func main() {
 	bam := flag.String("bam", "", "Bam file with ")
 	cs := flag.String("cs", "", "Supply chromosome sizes for the alignment genome if not found in the bam header")
 	within := flag.Int("mdist", 150, "Merge distance for nearby peaks")
-	outfile := flag.String("of", "peaks.bed", "Output file to write peaks to")
+	outprefix := flag.String("o", "sample", "Output prefiex to write peaks and metrics file")
 	minreads := flag.Int("mr", 15, "Min reads per coverage bin to be considered")
 	pval := flag.Float64("pval", 0.05, "Pvalue threshold for keeping a peak bin")
 	step := flag.Int("step", 100, "Bin size for coverage bins")
@@ -122,7 +122,8 @@ func main() {
 	// callpeaks
 	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval)
 
-	err = peaks.ExportBed3(*outfile, false)
+	outfile := *outprefix + "_peaks.bed"
+	err = peaks.ExportBed3(outfile, false)
 	if err != nil {
 		logrus.Errorln(err)
 	}
@@ -132,12 +133,12 @@ func main() {
 		Version: gopeaks_version,
 		Date:    time.Now().Format("2006-01-02 3:4:5 PM"),
 		Elapsed: time.Since(startTime).String(),
-		Outfile: *outfile,
+		Prefix:  *outprefix,
 		Peaks:   peaks.Length(),
 	}
 
 	// log metrics to file
-	metrics.Log()
+	metrics.Log(*outprefix)
 }
 
 func scaleTreatToControl(counts []float64, s1 []float64, s2 []float64) []float64 {
