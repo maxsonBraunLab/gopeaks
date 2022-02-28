@@ -2,19 +2,22 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"regexp"
 	"sync"
 	"time"
+	"math"
 
+	"github.com/akamensky/argparse"
 	gn "github.com/pbenner/gonetics"
 	"github.com/sirupsen/logrus"
 	"gonum.org/v1/gonum/stat/distuv"
+	"github.com/go-gota/gota/dataframe"
+	"github.com/go-gota/gota/series"
 )
 
-const gopeaks_version = "0.1.9"
+const gopeaks_version = "1.0.0"
 
 type Metrics struct {
 	Version string `json:"gopeaks_version"`
@@ -48,39 +51,48 @@ func main() {
 	// is calculated from
 	startTime := time.Now()
 
-	bam := flag.String("bam", "", "Bam file with ")
-	cs := flag.String("cs", "", "Supply chromosome sizes for the alignment genome if not found in the bam header")
-	within := flag.Int("mdist", 150, "Merge distance for nearby peaks")
-	outprefix := flag.String("o", "sample", "Output prefiex to write peaks and metrics file")
-	minreads := flag.Int("mr", 15, "Min reads per coverage bin to be considered")
-	pval := flag.Float64("pval", 0.05, "Pvalue threshold for keeping a peak bin")
-	step := flag.Int("step", 100, "Bin size for coverage bins")
-	slide := flag.Int("slide", 50, "Slide size for coverage bins")
-	minwidth := flag.Int("minwidth", 150, "Minimum width to be considered a peak")
-	control := flag.String("control", "", "Bam file with contriol signal to be subtracted")
-	version := flag.Bool("version", false, "Print the current gopeaks version")
-	flag.Parse()
+	parser := argparse.NewParser("GoPeaks",`GoPeaks is a peak caller designed for CUT&TAG/CUT&RUN sequencing data. GoPeaks by default works best with narrow peaks such as H3K4me3 and transcription factors. However, broad epigenetic marks like H3K27Ac/H3K4me1 require different the step, slide, and minwidth parameters. We encourage users to explore the parameters of GoPeaks to analyze their data.`)
+	bam := parser.String("b", "bam", &argparse.Options{Help: "Input BAM file (must be paired-end reads)"})
+	control := parser.String("c", "control", &argparse.Options{Help: "Input BAM file with control signal to be normalized (e.g. IgG, Input)"})
+	cs := parser.String("s", "chromsize", &argparse.Options{Help: "Chromosome sizes for the genome if not found in the bam header"})
+	within := parser.Int("m", "mdist", &argparse.Options{Help: "Merge peaks within <mdist> base pairs", Default: 150})
+	minreads := parser.Int("r", "minreads", &argparse.Options{Help: "Test genome bins with at least <minreads> read bins.", Default: 15})
+	pval := parser.Float("p", "pval", &argparse.Options{Help: "Define significance threshold <pval> with multiple hypothesis correction via Benjamini-Hochberg", Default: 0.05})
+	step := parser.Int("t", "step", &argparse.Options{Help: "Bin size for coverage bins", Default: 100})
+	slide := parser.Int("l", "slide", &argparse.Options{Help: "Slide size for coverage bins", Default: 50})
+	minwidth := parser.Int("w", "minwidth", &argparse.Options{Help: "Minimum width (bp) of a peak", Default: 150})
+	outprefix := parser.String("o", "prefix", &argparse.Options{Help: "Output prefix to write peaks and metrics file", Default: "sample"})
+	version := parser.Flag("v", "version", &argparse.Options{Help: "Print the current GoPeaks version"})
+	// verbose := parser.Flag("", "verbose", &argparse.Options{Help: "Run GoPeaks in verbose mode."})
+	// note: "Required" interface clashes with -version flag.
+	err := parser.Parse(os.Args)
 
-	if *version {
-		fmt.Printf("gopeaks - %s\n", gopeaks_version)
+	// check version
+	if *version == true {
+		fmt.Println("GoPeaks version:", gopeaks_version)
 		os.Exit(0)
 	}
 
+	// check argparse errors
+	if err != nil {
+		fmt.Print(parser.Usage(err))
+		os.Exit(1)
+	}
+
 	// require args
-	if len(os.Args) < 2 || *bam == "" {
-		flag.Usage()
+	if *bam == "" {
+		fmt.Println(parser.Help(nil))
 		os.Exit(1)
 	}
 
 	// read bamfile to GRanges
 	r := gn.GRanges{}
-	if err := r.ImportBamPairedEnd(*bam); err != nil {
+	if err := r.ImportBamPairedEnd(*bam, gn.BamReaderOptions{ReadName: false, ReadCigar: false, ReadSequence: false}); err != nil {
 		logrus.Errorf("Error %s", err.Error())
 		os.Exit(1)
 	}
 
 	g := gn.Genome{}
-	var err error
 	if *cs != "" {
 		err := g.Import(*cs)
 		if err != nil {
@@ -105,11 +117,17 @@ func main() {
 	binRanges := binGenome(g, *step, *slide)
 	binCounts := countOverlaps(binRanges, fr)
 	nreads := fr.Length()
+	// outcounts := *outprefix + "_counts.txt"
+	// fmt.Println("Exporting counts")
+	// err = binCounts.ExportTable(outcounts, true, false, false)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
 
 	// calculate control coverage and subtract signal
 	if *control != "" {
 		c := gn.GRanges{}
-		if err := c.ImportBamPairedEnd(*control); err != nil {
+		if err := c.ImportBamPairedEnd(*control, gn.BamReaderOptions{ReadName: false, ReadCigar: false, ReadSequence: false}); err != nil {
 			logrus.Errorf("Error %s", err.Error())
 			os.Exit(1)
 		}
@@ -119,8 +137,19 @@ func main() {
 		binCounts = normalizeToControl(binCounts, ctrlCounts, fr.Length(), cr.Length())
 	}
 
+	// fmt.Println("binCounts")
+	// fmt.Println(binCounts)
+
+	// print scaled counts
+	// outtable := *outprefix + "_scaled.txt.gz"
+	// fmt.Println("Exporting scaled counts")
+	// err = binCounts.ExportTable(outtable, true, false, true)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
+
 	// callpeaks
-	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval)
+	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval, *outprefix)
 
 	outfile := *outprefix + "_peaks.bed"
 	err = peaks.ExportBed3(outfile, false)
@@ -157,7 +186,7 @@ func scaleTreatToControl(counts []float64, s1 []float64, s2 []float64) []float64
 		} else {
 			frac = 1
 		}
-		scale[i] = counts[i] * (1 - frac)
+		scale[i] = math.Floor(counts[i] * (1 - frac))
 	}
 	return scale
 }
@@ -181,48 +210,179 @@ func normalizeToControl(treat gn.GRanges, ctrl gn.GRanges, treads, creads int) g
 
 	// scale the treatment
 	// scaled_counts = treat * 1-(control/treat)
+	// NOTE: intervals of 0 signal includes actual 0 bins PLUS where IgG > treatment thx to scaleTreatToControl
 	scale := scaleTreatToControl(tcounts, tcountsNorm, ccountsNorm)
 	treat.AddMeta("overlap_counts", scale)
 	return treat
 }
 
-// get sum and number of nonzero coverage bins
-func getCoverage(cts []float64) (float64, float64) {
-	sum := 0.0
-	n := 0.0
-	for i := 0; i < len(cts); i++ {
-		if cts[i] != 0 {
-			sum += cts[i]
-			n += 1
+func binomialParameters(counts []float64, minreads int) (float64, int, int) {
+
+	// nzSignals = total signal in non-zero bins
+	// nzBins = number of non-zero bins
+	// nTests = number of tests (binCounts > minreads)
+
+	nzSignals := 0.0
+	nzBins := 0
+	nTests := 0
+
+	for i := 0; i < len(counts); i++ {
+		binCounts := float64(counts[i])
+		// a bin can satisfy non-zero signal AND > minreads. This is okay.
+		if binCounts != 0.0 {
+			nzSignals += counts[i]
+			nzBins += 1
+		}
+		if binCounts > float64(minreads) {
+			nTests += 1
 		}
 	}
-	return sum, n
+
+	return nzSignals, nzBins, nTests
 }
 
-func callpeaks(coverage gn.GRanges, total float64, within, width, minreads int, pval float64) gn.GRanges {
+func callpeaks(coverage gn.GRanges, total float64, within, width, minreads int, pval float64, outprefix string) gn.GRanges {
+
+	// coverage = GRanges of overlap counts in a bin
+	// total = total number of paired-end reads
 
 	ccts := coverage.GetMeta("overlap_counts").([]float64)
-	sum, n := getCoverage(ccts)
+	nzSignals, nzBins, nTests := binomialParameters(ccts, minreads)
 
 	// calculate probability of read in non-zero bin
-	p := (float64(sum) / float64(n)) / float64(total)
+	p := (float64(nzSignals) / float64(nzBins)) / float64(total)
 
-	// filter coverage bins
+	fmt.Println("nTests:", nTests)
+	fmt.Println("nzSignals:", nzSignals)
+	fmt.Println("nzBins:", nzBins)
+	fmt.Println("total:", total)
+	fmt.Println("p:", p)
+	fmt.Println("mu:", float64(nzBins) * float64(p))
+	fmt.Println("var:", float64(nzBins) * float64(p) * (1-float64(p)))
+
 	var keepSlice []int
+	var bins []int
+	var counts []float64
+	var pvals []float64
+
+	nTests = 0
 	for i := 0; i < len(ccts); i++ {
 		cnt := ccts[i]
-		prob := BinomTest(cnt, total, p)
-		if keep := filterBins(prob, pval); keep && cnt > float64(minreads) {
-			keepSlice = append(keepSlice, i)
+		if cnt > float64(minreads) {
+			prob := BinomTest(cnt, total, p)
+			nTests += 1
+			bins = append(bins, i)
+			counts = append(counts, cnt)
+			pvals = append(pvals, prob)
 		}
 	}
 
-	// merge overlapping and nearby peaks
+	// `pvals` is list of p-values per eligible bin. `pval` is threshold for significance.
+	keepSlice = filterBinsbyFDR(bins, counts, pvals, pval, nTests, outprefix)
+
+	// merge overlapping and nearby peaks -----------------------------------------------
 	binsKeep := coverage.Subset(keepSlice)
 	binsKeepMerge := binsKeep.Merge()
 	peaks := mergeWithin(binsKeepMerge, within)
 	peaksFilt := filterPeakWidth(peaks, width)
 	return peaksFilt
+}
+
+func filterBinsbyFDR(Bins []int, Counts []float64, Pvals []float64, Threshold float64, Tests int, outprefix string) []int {
+
+	keepBins := []int{}
+
+	// assign rank to each uniq pval
+	// init fdrDF with binID, counts, and pvals.
+	fdrDF := dataframe.New(
+		series.New(Bins, series.Int, "bin"),
+		series.New(Counts, series.Float, "counts"),
+		series.New(Pvals, series.Float, "pval"),
+	)
+	fdrDF = fdrDF.Arrange(dataframe.Sort("pval"))
+	fdrDF = assignRanks(fdrDF)
+
+	// fmt.Println("assigned ranks")
+	// fmt.Println(fdrDF)
+
+	// create new series: [padj, keep].
+	// calculate padj for each pval
+	fdr := series.New([]float64{}, series.Float, "padj")
+	keep := series.New([]int{}, series.Int, "keep")
+
+	for i := 0; i < fdrDF.Nrow(); i++ {
+
+		p := fdrDF.Elem(i, 2).Float()
+		r := fdrDF.Elem(i, 3).Float()
+
+		// ranks came from assignRanks
+		// padj = (n_test * pval) / rank
+		padj := float64(Tests) * float64(p) / float64(r)
+		if padj >= 1 {
+			padj = 1
+		}
+
+		// collect money
+		fdr.Append(padj)
+		if padj < Threshold {
+			keep.Append(1)
+		} else {
+			keep.Append(0)
+		}
+	}
+
+	// create padj and keep columns in the DF
+	fdrDF = fdrDF.
+		Mutate(series.New(fdr, series.Float, "padj")).
+		Mutate(series.New(keep, series.Int, "keep"))
+
+	// filter and return significant peaks
+	fdrDF = fdrDF.Filter(dataframe.F{
+		Colname: "keep",
+		Comparator: series.Eq,
+		Comparando: 1},
+	)
+	for i := 0; i < fdrDF.Nrow(); i++ {
+		sigSlice, _ := fdrDF.Elem(i, 0).Int()
+		keepBins = append(keepBins, sigSlice)
+	}
+
+	// fmt.Println(fdrDF)
+	fmt.Println(fdrDF.Drop([]int{0, 3, 5}).Describe()) // stat summary all columns except for BinID and keep.
+
+	return keepBins
+}
+
+func assignRanks(fdrDF dataframe.DataFrame) dataframe.DataFrame {
+
+	// implement smart ranking scheme to account for same pvals
+
+	// assume the pval col is sorted numerically
+	rank := 0
+	rankSeries := series.New([]int{}, series.Int, "rankSeries")
+	pvalMap := make(map[float64]int)
+
+	// create pval:rank map
+	for i := 0; i < fdrDF.Nrow(); i++ {
+		pval := fdrDF.Elem(i, 2).Float()
+		_, ok := pvalMap[pval] // output = value, bool
+		if !ok {
+			rank += 1
+			pvalMap[pval] = rank
+		}
+	}
+
+	// assign rank to rankSeries
+	for i := 0; i < fdrDF.Nrow(); i++ {
+		pval := fdrDF.Elem(i, 2).Float()
+		rankSeries.Append(pvalMap[pval])
+	}
+
+	// add rank column to DF
+	fdrDF = fdrDF.Mutate(series.New(rankSeries, series.Int, "rank"))
+
+	return fdrDF
+
 }
 
 // filterPeakWidth returns a granges object with ranges having width
@@ -237,17 +397,10 @@ func filterPeakWidth(peaks gn.GRanges, width int) gn.GRanges {
 	return peaks.Subset(keepIdx)
 }
 
-// return true if bin is significant
-func filterBins(prob, threshold float64) bool {
-	if prob < threshold {
-		return true
-	}
-	return false
-}
-
 // BinomTest returns the p-value testing the null hypothesis that the
 // probability of a positive Bernoulli trial of probability p is p
 func BinomTest(count float64, total float64, p float64) float64 {
+	// dev notes: may need to use one-tailed binomial test. we're not interested in bins < expected.
 	dist := distuv.Binomial{N: float64(total) - count, P: p}
 	return dist.Prob(float64(count))
 }
