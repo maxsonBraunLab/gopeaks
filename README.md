@@ -15,7 +15,7 @@ conda install -c jakevc gopeaks
 Or download binary asset directly from github: 
 
 ```
-wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/v0.1.9/gopeaks-linux-amd64
+wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/v1.0.0/gopeaks-linux-amd64
 chmod +x gopeaks
 ```
 
