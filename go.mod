@@ -1,4 +1,4 @@
-module jakevc/gopeaks
+module maxsonBraunLab/gopeaks
 
 go 1.15
 

@@ -1,6 +1,6 @@
 [![Go](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml) ![conda](https://anaconda.org/jakevc/gopeaks/badges/installer/conda.svg)
 
-# README
+# GoPeaks
 
 GoPeaks is a peak caller designed for CUT&TAG/CUT&RUN sequencing data. GoPeaks by default works best with narrow peaks such as H3K4me3 and transcription factors. However, broad epigenetic marks like H3K27Ac/H3K4me1 require different the step, slide, and minwidth parameters. We encourage users to explore the parameters of GoPeaks to analyze their data.
 
@@ -56,8 +56,7 @@ Arguments:
   -v  --version    Print the current GoPeaks version
 ```
 
-
-## call peaks on a bam file using an IgG control
+## Call peaks on a bam file using an IgG control
 
 ```
 ./gopeaks --bam ../chr1.bam --control chr1_igg.bam -s data/hg38.known.chrom.sizes -o chr1
@@ -87,3 +86,12 @@ cat sample_gopeaks.json
 	"peak_counts": 4765
 }
 ```
+
+## Recommended parameters
+
+| Sequencing Modality                      | Recommended Parameters       |
+| ---------------------------------------- | ---------------------------- |
+| CUT&TAG or CUT&RUN narrow peaks          | Default parameters           |
+| CUT&TAG or CUT&RUN transcription factors | Default parameters           |
+| CUT&TAG or CUT&RUN broad peaks           | `--broad` and `--mdist 3000` |
+| ATAC-Seq                                 | Default parameters           |

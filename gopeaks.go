@@ -55,17 +55,19 @@ func main() {
 	bam := parser.String("b", "bam", &argparse.Options{Help: "Input BAM file (must be paired-end reads)"})
 	control := parser.String("c", "control", &argparse.Options{Help: "Input BAM file with control signal to be normalized (e.g. IgG, Input)"})
 	cs := parser.String("s", "chromsize", &argparse.Options{Help: "Chromosome sizes for the genome if not found in the bam header"})
-	within := parser.Int("m", "mdist", &argparse.Options{Help: "Merge peaks within <mdist> base pairs", Default: 150})
-	minreads := parser.Int("r", "minreads", &argparse.Options{Help: "Test genome bins with at least <minreads> read bins.", Default: 15})
+	within := parser.Int("m", "mdist", &argparse.Options{Help: "Merge peaks within <mdist> base pairs", Default: 1000})
+	minreads := parser.Int("r", "minreads", &argparse.Options{Help: "Test genome bins with at least <minreads> read pairs.", Default: 15})
 	pval := parser.Float("p", "pval", &argparse.Options{Help: "Define significance threshold <pval> with multiple hypothesis correction via Benjamini-Hochberg", Default: 0.05})
 	step := parser.Int("t", "step", &argparse.Options{Help: "Bin size for coverage bins", Default: 100})
 	slide := parser.Int("l", "slide", &argparse.Options{Help: "Slide size for coverage bins", Default: 50})
 	minwidth := parser.Int("w", "minwidth", &argparse.Options{Help: "Minimum width (bp) of a peak", Default: 150})
 	outprefix := parser.String("o", "prefix", &argparse.Options{Help: "Output prefix to write peaks and metrics file", Default: "sample"})
 	version := parser.Flag("v", "version", &argparse.Options{Help: "Print the current GoPeaks version"})
-	// verbose := parser.Flag("", "verbose", &argparse.Options{Help: "Run GoPeaks in verbose mode."})
+	broad := parser.Flag("", "broad", &argparse.Options{Help: "Run GoPeaks on broad marks (--step 5000 & --slide 1000)"})
 	// note: "Required" interface clashes with -version flag.
 	err := parser.Parse(os.Args)
+
+	// parse flags --------------------------------------------------------------------------------
 
 	// check version
 	if *version == true {
@@ -110,6 +112,15 @@ func main() {
 		}
 	}
 
+	if *broad == true {
+		x := 5000
+		step = &x
+		y := 1000
+		slide = &y
+	}
+
+	// import data --------------------------------------------------------------------------------
+
 	gf := KnownChroms(&g)
 	fr := r.FilterGenome(gf)
 
@@ -117,12 +128,6 @@ func main() {
 	binRanges := binGenome(g, *step, *slide)
 	binCounts := countOverlaps(binRanges, fr)
 	nreads := fr.Length()
-	// outcounts := *outprefix + "_counts.txt"
-	// fmt.Println("Exporting counts")
-	// err = binCounts.ExportTable(outcounts, true, false, false)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
 
 	// calculate control coverage and subtract signal
 	if *control != "" {
@@ -137,18 +142,7 @@ func main() {
 		binCounts = normalizeToControl(binCounts, ctrlCounts, fr.Length(), cr.Length())
 	}
 
-	// fmt.Println("binCounts")
-	// fmt.Println(binCounts)
-
-	// print scaled counts
-	// outtable := *outprefix + "_scaled.txt.gz"
-	// fmt.Println("Exporting scaled counts")
-	// err = binCounts.ExportTable(outtable, true, false, true)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
-
-	// callpeaks
+	// callpeaks ----------------------------------------------------------------------------------
 	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval, *outprefix)
 
 	outfile := *outprefix + "_peaks.bed"
@@ -157,7 +151,7 @@ func main() {
 		logrus.Errorln(err)
 	}
 
-	// write output metrics
+	// write output metrics -----------------------------------------------------------------------
 	metrics := &Metrics{
 		Version: gopeaks_version,
 		Date:    time.Now().Format("2006-01-02 3:4:5 PM"),
@@ -348,7 +342,7 @@ func filterBinsbyFDR(Bins []int, Counts []float64, Pvals []float64, Threshold fl
 	}
 
 	// fmt.Println(fdrDF)
-	fmt.Println(fdrDF.Drop([]int{0, 3, 5}).Describe()) // stat summary all columns except for BinID and keep.
+	// fmt.Println(fdrDF.Drop([]int{0, 3, 5}).Describe()) // stat summary all columns except for BinID and keep.
 
 	return keepBins
 }
