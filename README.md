@@ -4,7 +4,7 @@
 
 GoPeaks is a peak caller designed for CUT&TAG/CUT&RUN sequencing data. GoPeaks by default works best with narrow peaks such as H3K4me3 and transcription factors. However, broad epigenetic marks like H3K27Ac/H3K4me1 require different the step, slide, and minwidth parameters. We encourage users to explore the parameters of GoPeaks to analyze their data.
 
-# Configure
+## Configure
 
 Download the latest release using conda: 
 
@@ -19,7 +19,7 @@ wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/v1.0
 chmod +x gopeaks
 ```
 
-# Example Usage
+## Example Usage
 
 ```
 usage: GoPeaks [-h|--help] [-b|--bam "<value>"] [-c|--control "<value>"]
@@ -59,7 +59,7 @@ Arguments:
 ## Call peaks on a bam file using an IgG control
 
 ```
-./gopeaks --bam ../chr1.bam --control chr1_igg.bam -s data/hg38.known.chrom.sizes -o chr1
+$ ./gopeaks -b <sample>.bam -c <control>.bam -o data/gopeaks/<sample>
 ```
 
 ## Output
