@@ -51,7 +51,7 @@ func main() {
 	// is calculated from
 	startTime := time.Now()
 
-	parser := argparse.NewParser("GoPeaks",`GoPeaks is a peak caller designed for CUT&TAG/CUT&RUN sequencing data. GoPeaks by default works best with narrow peaks such as H3K4me3 and transcription factors. However, broad epigenetic marks like H3K27Ac/H3K4me1 require different the step, slide, and minwidth parameters. We encourage users to explore the parameters of GoPeaks to analyze their data.`)
+	parser := argparse.NewParser("GoPeaks",`GoPeaks is a peak caller designed for CUT&TAG/CUT&RUN sequencing data. GoPeaks by default works best with narrow peaks such as H3K4me3 and transcription factors. GoPeaks can be used with the "--broad" flag to call broad peaks like H3K27Ac/H3K4me1. We encourage users to explore the parameters of GoPeaks to analyze their data.`)
 	bam := parser.String("b", "bam", &argparse.Options{Help: "Input BAM file (must be paired-end reads)"})
 	control := parser.String("c", "control", &argparse.Options{Help: "Input BAM file with control signal to be normalized (e.g. IgG, Input)"})
 	cs := parser.String("s", "chromsize", &argparse.Options{Help: "Chromosome sizes for the genome if not found in the bam header"})
