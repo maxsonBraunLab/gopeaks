@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 	"math"
+	"strings"
 
 	"github.com/akamensky/argparse"
 	gn "github.com/pbenner/gonetics"
@@ -24,6 +25,7 @@ type Metrics struct {
 	Date    string `json:"date"`
 	Elapsed string `json:"elapsed"`
 	Prefix  string `json:"prefix"`
+	Command string `json:"command"`
 	Peaks   int    `json:"peak_counts"`
 }
 
@@ -64,7 +66,8 @@ func main() {
 	outprefix := parser.String("o", "prefix", &argparse.Options{Help: "Output prefix to write peaks and metrics file", Default: "sample"})
 	version := parser.Flag("v", "version", &argparse.Options{Help: "Print the current GoPeaks version"})
 	broad := parser.Flag("", "broad", &argparse.Options{Help: "Run GoPeaks on broad marks (--step 5000 & --slide 1000)"})
-	// note: "Required" interface clashes with -version flag.
+	verbose := parser.Flag("", "verbose", &argparse.Options{Help: "Run GoPeaks in verbose mode."})
+	// note: "Required" interface clashes with --version flag.
 	err := parser.Parse(os.Args)
 
 	// parse flags --------------------------------------------------------------------------------
@@ -104,7 +107,9 @@ func main() {
 	}
 
 	if *cs == "" {
-		fmt.Println("Reading chromsizes from bam header...")
+		if *verbose {
+			fmt.Println("Reading chromsizes from bam header...")
+		}
 		g, err = gn.BamImportGenome(*bam)
 		if err != nil {
 			fmt.Println("Genome could not be determined from bam file")
@@ -143,7 +148,7 @@ func main() {
 	}
 
 	// callpeaks ----------------------------------------------------------------------------------
-	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval, *outprefix)
+	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval, *outprefix, *verbose)
 
 	outfile := *outprefix + "_peaks.bed"
 	err = peaks.ExportBed3(outfile, false)
@@ -157,6 +162,7 @@ func main() {
 		Date:    time.Now().Format("2006-01-02 3:4:5 PM"),
 		Elapsed: time.Since(startTime).String(),
 		Prefix:  *outprefix,
+		Command:  strings.Join(os.Args, " "),
 		Peaks:   peaks.Length(),
 	}
 
@@ -235,7 +241,7 @@ func binomialParameters(counts []float64, minreads int) (float64, int, int) {
 	return nzSignals, nzBins, nTests
 }
 
-func callpeaks(coverage gn.GRanges, total float64, within, width, minreads int, pval float64, outprefix string) gn.GRanges {
+func callpeaks(coverage gn.GRanges, total float64, within, width, minreads int, pval float64, outprefix string, verbose bool) gn.GRanges {
 
 	// coverage = GRanges of overlap counts in a bin
 	// total = total number of paired-end reads
@@ -246,13 +252,15 @@ func callpeaks(coverage gn.GRanges, total float64, within, width, minreads int, 
 	// calculate probability of read in non-zero bin
 	p := (float64(nzSignals) / float64(nzBins)) / float64(total)
 
-	fmt.Println("nTests:", nTests)
-	fmt.Println("nzSignals:", nzSignals)
-	fmt.Println("nzBins:", nzBins)
-	fmt.Println("total:", total)
-	fmt.Println("p:", p)
-	fmt.Println("mu:", float64(nzBins) * float64(p))
-	fmt.Println("var:", float64(nzBins) * float64(p) * (1-float64(p)))
+	if verbose {
+		fmt.Println("nTests:", nTests)
+		fmt.Println("nzSignals:", nzSignals)
+		fmt.Println("nzBins:", nzBins)
+		fmt.Println("n:", total)
+		fmt.Println("p:", p)
+		fmt.Println("mu:", float64(nzBins) * float64(p))
+		fmt.Println("var:", float64(nzBins) * float64(p) * (1-float64(p)))
+	}
 
 	var keepSlice []int
 	var bins []int
