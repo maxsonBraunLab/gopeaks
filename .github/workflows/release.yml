@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -9,13 +11,13 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout # ----------------------------------------------------------------
         uses: actions/checkout@v1
-      - name: Set up Go 1.15
+      - name: Set up Go 1.15 # ----------------------------------------------------------
         uses: actions/setup-go@v1
         with:
           go-version: 1.15.11
-      - name: Build with xgo
+      - name: Build with xgo # ----------------------------------------------------------
         uses: crazy-max/ghaction-xgo@v1
         with:
           xgo_version: latest
@@ -26,7 +28,7 @@ jobs:
           v: true
           x: false
           ldflags: -s -w
-      - name: Create Release
+      - name: Create Release # ----------------------------------------------------------
         uses: actions/create-release@v1.0.0
         id: create_release
         env:
@@ -36,14 +38,14 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
-      - name: Upload Release Assets
+      - name: Upload Release Assets # ---------------------------------------------------
         uses: glentiki/xbin-release-action@v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GO_RELEASE_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
           assets_path: ./build
-      - name: Publish conda
+      - name: Publish conda # -----------------------------------------------------------
         uses: maxibor/conda-package-publish-action@v1.1
         with:
           subDir: 'conda'
