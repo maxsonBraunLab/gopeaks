@@ -2,31 +2,26 @@
 
 # GoPeaks
 
-GoPeaks is a peak caller designed for CUT&TAG/CUT&RUN sequencing data. GoPeaks by default works best with narrow peaks such as H3K4me3 and transcription factors. GoPeaks can be used with the "--broad" flag to call broad peaks like H3K27Ac/H3K4me1. We encourage users to explore the parameters of GoPeaks to analyze their data.  
+GoPeaks is a peak caller designed for CUT&TAG/CUT&RUN sequencing data. GoPeaks by default works best with narrow peaks such as H3K4me3 and transcription factors. However, broad epigenetic marks like H3K27Ac/H3K4me1 require different the step, slide, and minwidth parameters. We encourage users to explore the parameters of GoPeaks to analyze their data.
 
-# Installation
-
-## Conda
+## Configure
 
 Download the latest release using conda: 
 
 ```
-$ conda install -c jakevc gopeaks
+conda install -c jakevc gopeaks
 ```
 
-## GitHub
+Or download binary asset directly from github: 
 
-Download the GoPeaks compiled binaries directly from GitHub:
-
-```bash
-$ wget -O GoPeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/1.0.0/gopeaks-linux-amd64
-$ chmod +x GoPeaks
+```
+wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/v1.0.0/gopeaks-linux-amd64
+chmod +x gopeaks
 ```
 
-# Example Usage
+## Example Usage
 
-```bash
-$ ./GoPeaks -h
+```
 usage: GoPeaks [-h|--help] [-b|--bam "<value>"] [-c|--control "<value>"]
                [-s|--chromsize "<value>"] [-m|--mdist <integer>] [-r|--minreads
                <integer>] [-p|--pval <float>] [-t|--step <integer>] [-l|--slide
@@ -62,19 +57,13 @@ Arguments:
       --broad      Run GoPeaks on broad marks (--step 5000 & --slide 1000)
 ```
 
-## Call narrow peaks
+## Call peaks on a bam file using an IgG control
 
-```bash
-$ ./GoPeaks -b <sample>.bam -c <control>.bam -o data/gopeaks/<sample>
+```
+$ ./gopeaks -b <sample>.bam -c <control>.bam -o data/gopeaks/<sample>
 ```
 
-## Call broad peaks
-
-```bash
-$ ./GoPeaks -b <sample>.bam -c <control>.bam -o data/gopeaks/<sample> --broad --mdist 3000
-```
-
-# Output
+## Output
 
 Two output files are generated each with the output prefix ${prefix}, set to "sample" by default.
 
@@ -83,30 +72,27 @@ Two output files are generated each with the output prefix ${prefix}, set to "sa
 
 ```
 head sample_peaks.bed
-chr1  9950  10550
-chr1  21250 22650
-chr1  96050 97050
+chr1	9950	10550
+chr1	21250	22650
+chr1	96050	97050
 ```
 
-```bash
-$ cat sample_gopeaks.json
+```
+cat sample_gopeaks.json
 {
-  "gopeaks_version": "1.0.0",
-  "date": "2021-08-06 11:4:58 AM",
-  "elapsed": "1m23.43085221s",
-  "prefix": "sample",
-    "command": "./gopeaks -b test/K562_1_H3K4me3.ban.sorted.markd.bam -c test/K562_1_IgG.ban.sorted.markd.bam -o K562_1_H3K4me3",
-  "peak_counts": 10329
+	"gopeaks_version": "1.0.0",
+	"date": "2021-08-06 11:4:58 AM",
+	"elapsed": "1m23.43085221s",
+	"prefix": "sample",
+	"peak_counts": 4765
 }
 ```
 
-# Recommended parameters
+## Recommended parameters
 
 | Sequencing Modality                      | Recommended Parameters       |
 | ---------------------------------------- | ---------------------------- |
 | CUT&TAG or CUT&RUN narrow peaks          | Default parameters           |
 | CUT&TAG or CUT&RUN transcription factors | Default parameters           |
-| ATAC-Seq                                 | Default parameters           |
-| ChIP-Seq narrow peaks                    | Default parameters           |
 | CUT&TAG or CUT&RUN broad peaks           | `--broad` and `--mdist 3000` |
-| ChIP-Seq broad peaks                     | `--broad` and `--mdist 3000` |
+| ATAC-Seq                                 | Default parameters           |
