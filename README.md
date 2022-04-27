@@ -1,4 +1,4 @@
-[![Go](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml) ![conda](https://anaconda.org/jakevc/gopeaks/badges/installer/conda.svg)
+[![Go](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml) ![conda](https://anaconda.org/jakevc/gopeaks/badges/installer/conda.svg) [![conda-forge](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/release.yml)]
 
 # GoPeaks
 
@@ -15,7 +15,7 @@ conda install -c jakevc gopeaks
 Or download binary asset directly from github: 
 
 ```
-wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/v1.0.0/gopeaks-linux-amd64
+wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/1.0.0/gopeaks-linux-amd64
 chmod +x gopeaks
 ```
 
