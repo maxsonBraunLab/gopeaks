@@ -1,4 +1,4 @@
-[![Go](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml) ![conda](https://anaconda.org/jakevc/gopeaks/badges/installer/conda.svg) [![conda-forge](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/release.yml)]
+[![Go](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml)
 
 # GoPeaks
 
