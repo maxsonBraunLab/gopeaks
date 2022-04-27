@@ -6,13 +6,7 @@ GoPeaks is a peak caller designed for CUT&TAG/CUT&RUN sequencing data. GoPeaks b
 
 ## Configure
 
-Download the latest release using conda: 
-
-```
-conda install -c jakevc gopeaks
-```
-
-Or download binary asset directly from github: 
+Download binary asset directly from github: 
 
 ```
 wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/1.0.0/gopeaks-linux-amd64
