@@ -1,4 +1,4 @@
-[![Go](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml)
+[![Anaconda-Server Badge](https://anaconda.org/bioconda/gopeaks/badges/version.svg)](https://anaconda.org/bioconda/gopeaks) [![Anaconda-Server Badge](https://anaconda.org/bioconda/gopeaks/badges/downloads.svg)](https://anaconda.org/bioconda/gopeaks) [![Anaconda-Server Badge](https://anaconda.org/bioconda/gopeaks/badges/license.svg)](https://anaconda.org/bioconda/gopeaks) [![Go](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/maxsonBraunLab/gopeaks/actions/workflows/go.yml)
 
 # GoPeaks
 
