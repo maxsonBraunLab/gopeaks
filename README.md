@@ -86,11 +86,12 @@ chr1	96050	97050
 ```
 cat sample_gopeaks.json
 {
-	"gopeaks_version": "1.0.0",
-	"date": "2021-08-06 11:4:58 AM",
-	"elapsed": "1m23.43085221s",
-	"prefix": "sample",
-	"peak_counts": 4765
+        "gopeaks_version": "1.0.0",
+        "date": "2022-05-10 3:19:14 PM",
+        "elapsed": "5m20.184082356s",
+        "prefix": "K562_1_H3K4me3",
+        "command": "gopeaks -b K562_1_H3K4me3.bam -c K562_1_IgG.bam",
+        "peak_counts": 10329
 }
 ```
 
