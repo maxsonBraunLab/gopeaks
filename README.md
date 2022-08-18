@@ -23,6 +23,12 @@ wget -O gopeaks https://github.com/maxsonBraunLab/gopeaks/releases/download/v1.0
 chmod +x gopeaks
 ```
 
+# Paper
+
+GoPeaks has been published in Genome Biology on July 4th. If you use our program in your studies, please cite our paper:
+
+Yashar, W.M., Kong, G., VanCampen, J. et al. GoPeaks: histone modification peak calling for CUT&Tag. Genome Biol 23, 144 (2022). https://doi.org/10.1186/s13059-022-02707-w
+
 # Example Usage
 
 ```
