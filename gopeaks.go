@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"sync"
 	"time"
 	"math"
@@ -128,27 +129,234 @@ func main() {
 
 	gf := KnownChroms(&g)
 	fr := r.FilterGenome(gf)
-
-	// calculate coverage
-	binRanges := binGenome(g, *step, *slide)
-	binCounts := countOverlaps(binRanges, fr)
 	nreads := fr.Length()
+	
+	// Clear full BAM data from memory - we'll process by chromosome
+	r = gn.GRanges{}
 
-	// calculate control coverage and subtract signal
+	// Load control data if provided
+	var ctrlRanges *gn.GRanges
+	var ctrlReads int
 	if *control != "" {
 		c := gn.GRanges{}
 		if err := c.ImportBamPairedEnd(*control, gn.BamReaderOptions{ReadName: false, ReadCigar: false, ReadSequence: false}); err != nil {
 			logrus.Errorf("Error %s", err.Error())
 			os.Exit(1)
 		}
-
 		cr := c.FilterGenome(gf)
-		ctrlCounts := countOverlaps(binRanges, cr)
-		binCounts = normalizeToControl(binCounts, ctrlCounts, fr.Length(), cr.Length())
+		ctrlReads = cr.Length()
+		ctrlRanges = &cr
+		// Clear full control BAM data - we'll process by chromosome
+		c = gn.GRanges{}
 	}
 
-	// callpeaks ----------------------------------------------------------------------------------
-	peaks := callpeaks(binCounts, float64(nreads), *within, *minwidth, *minreads, *pval, *outprefix, *verbose)
+	// Two-pass approach: 
+	// Pass 1: Calculate coverage per chromosome (process separately to save memory)
+	// Pass 2: Calculate global stats and call peaks per chromosome
+	
+	if *verbose {
+		fmt.Printf("Pass 1: Calculating coverage for %d chromosomes...\n", len(gf.Seqnames))
+	}
+
+	// Store chromosome-specific bin counts (only metadata, not full GRanges)
+	type chrBinData struct {
+		chr       string
+		binRanges gn.GRanges
+		counts    []float64
+	}
+	var chrBinDataList []chrBinData
+
+	// Pass 1: Calculate coverage per chromosome
+	for chrIdx, chr := range gf.Seqnames {
+		if *verbose {
+			fmt.Printf("  Processing chromosome %s (%d/%d)...\n", chr, chrIdx+1, len(gf.Seqnames))
+		}
+
+		// Filter reads for this chromosome only
+		chrReads := filterGRangesByChrom(fr, chr)
+		
+		// Skip if no reads for this chromosome
+		if chrReads.Length() == 0 {
+			chrReads = gn.GRanges{}
+			continue
+		}
+		
+		// Create bins for this chromosome only
+		chrBinRanges := binChrom(gf, chr, *step, *slide)
+		
+		// Skip if no bins for this chromosome
+		if chrBinRanges.Length() == 0 {
+			chrReads = gn.GRanges{}
+			chrBinRanges = gn.GRanges{}
+			continue
+		}
+		
+		// Count overlaps for this chromosome
+		chrBinCounts := countOverlaps(chrBinRanges, chrReads)
+		
+		// Process control if provided
+		if ctrlRanges != nil {
+			chrCtrlReads := filterGRangesByChrom(*ctrlRanges, chr)
+			if chrCtrlReads.Length() > 0 {
+				chrCtrlCounts := countOverlaps(chrBinRanges, chrCtrlReads)
+				chrBinCounts = normalizeToControl(chrBinCounts, chrCtrlCounts, nreads, ctrlReads)
+				chrCtrlReads = gn.GRanges{} // Clear memory
+				chrCtrlCounts = gn.GRanges{} // Clear memory
+			}
+		}
+		
+		// Extract counts and store (keep bin ranges for later peak calling)
+		counts := chrBinCounts.GetMeta("overlap_counts").([]float64)
+		chrBinDataList = append(chrBinDataList, chrBinData{
+			chr:       chr,
+			binRanges: chrBinRanges,
+			counts:    counts,
+		})
+		
+		// Clear chromosome-specific data (keep counts in chrBinDataList)
+		chrReads = gn.GRanges{}
+		chrBinCounts = gn.GRanges{}
+	}
+	
+	// Clear full read data - we have all counts now
+	fr = gn.GRanges{}
+	if ctrlRanges != nil {
+		*ctrlRanges = gn.GRanges{}
+	}
+
+	// Calculate global statistics from all chromosome counts
+	if *verbose {
+		fmt.Println("Pass 2: Calculating global statistics and calling peaks...")
+	}
+	
+	var allCounts []float64
+	for _, data := range chrBinDataList {
+		allCounts = append(allCounts, data.counts...)
+	}
+	
+	// Calculate global binomial parameters
+	nzSignals, nzBins, globalNTests := binomialParameters(allCounts, *minreads)
+	p := (float64(nzSignals) / float64(nzBins)) / float64(nreads)
+	
+	if *verbose {
+		fmt.Printf("Global stats: nzSignals=%.0f, nzBins=%d, nTests=%d, p=%.6e\n", nzSignals, nzBins, globalNTests, p)
+	}
+	
+	// Pass 2: Calculate p-values for all bins globally, then do FDR correction
+	// Collect all eligible bins with their p-values
+	type globalBinData struct {
+		chrIdx   int
+		binIdx   int
+		count    float64
+		pval     float64
+		binRange gn.Range
+		chr      string
+	}
+	
+	var globalBins []globalBinData
+	
+	for chrIdx, data := range chrBinDataList {
+		for binIdx := 0; binIdx < len(data.counts); binIdx++ {
+			cnt := data.counts[binIdx]
+			if cnt > float64(*minreads) {
+				prob := BinomTest(cnt, float64(nreads), p)
+				globalBins = append(globalBins, globalBinData{
+					chrIdx:   chrIdx,
+					binIdx:   binIdx,
+					count:    cnt,
+					pval:     prob,
+					binRange: data.binRanges.Ranges[binIdx],
+					chr:      data.chr,
+				})
+			}
+		}
+	}
+	
+	if *verbose {
+		fmt.Printf("Calculated p-values for %d bins across all chromosomes\n", len(globalBins))
+	}
+	
+	// Extract data for FDR correction
+	bins := make([]int, len(globalBins))
+	counts := make([]float64, len(globalBins))
+	pvals := make([]float64, len(globalBins))
+	for i, gb := range globalBins {
+		bins[i] = i // Store index into globalBins
+		counts[i] = gb.count
+		pvals[i] = gb.pval
+	}
+	
+	// Global FDR correction
+	keepIndices := filterBinsbyFDR(bins, counts, pvals, *pval, globalNTests, *outprefix)
+	
+	if *verbose {
+		fmt.Printf("After FDR correction: %d significant bins\n", len(keepIndices))
+	}
+	
+	// Build GRanges from significant bins (grouped by chromosome)
+	peaksByChr := make(map[string][]gn.Range)
+	for _, idx := range keepIndices {
+		gb := globalBins[idx]
+		peaksByChr[gb.chr] = append(peaksByChr[gb.chr], gb.binRange)
+	}
+	
+	// Clear global bins data
+	globalBins = nil
+	bins = nil
+	counts = nil
+	pvals = nil
+	
+	// Convert to GRanges and merge peaks per chromosome
+	var allPeaks gn.GRanges
+	allPeaks = gn.GRanges{
+		Seqnames: []string{},
+		Ranges:   []gn.Range{},
+		Strand:   []byte{},
+		Meta:     gn.Meta{},
+	}
+	
+	for chrIdx, data := range chrBinDataList {
+		if *verbose && len(peaksByChr[data.chr]) > 0 {
+			fmt.Printf("  Merging peaks for chromosome %s (%d/%d)...\n", data.chr, chrIdx+1, len(chrBinDataList))
+		}
+		
+		ranges := peaksByChr[data.chr]
+		if len(ranges) == 0 {
+			continue
+		}
+		
+		// Create GRanges for this chromosome's peaks
+		seqnames := make([]string, len(ranges))
+		starts := make([]int, len(ranges))
+		ends := make([]int, len(ranges))
+		strand := make([]byte, len(ranges))
+		for i, r := range ranges {
+			seqnames[i] = data.chr
+			starts[i] = r.From
+			ends[i] = r.To
+			strand[i] = '*'
+		}
+		
+		chrPeaks := gn.NewGRanges(seqnames, starts, ends, strand)
+		
+		// Merge overlapping and nearby peaks
+		chrPeaksMerge := chrPeaks.Merge()
+		chrPeaksMerged := mergeWithin(chrPeaksMerge, *within)
+		chrPeaksFilt := filterPeakWidth(chrPeaksMerged, *minwidth)
+		
+		// Append to master list
+		if chrPeaksFilt.Length() > 0 {
+			allPeaks = allPeaks.Append(chrPeaksFilt)
+		}
+		
+		// Clear chromosome-specific data
+		chrPeaks = gn.GRanges{}
+		chrPeaksMerge = gn.GRanges{}
+		chrPeaksMerged = gn.GRanges{}
+		chrPeaksFilt = gn.GRanges{}
+	}
+
+	peaks := allPeaks
 
 	outfile := *outprefix + "_peaks.bed"
 	err = peaks.ExportBed3(outfile, false)
@@ -290,67 +498,81 @@ func callpeaks(coverage gn.GRanges, total float64, within, width, minreads int, 
 	return peaksFilt
 }
 
+// callpeaksWithGlobalStats is similar to callpeaks but uses pre-calculated global probability and global nTests
+func callpeaksWithGlobalStats(coverage gn.GRanges, total float64, globalP float64, globalNTests int, within, width, minreads int, pval float64, outprefix string, verbose bool) gn.GRanges {
+
+	ccts := coverage.GetMeta("overlap_counts").([]float64)
+
+	var keepSlice []int
+	var bins []int
+	var counts []float64
+	var pvals []float64
+
+	for i := 0; i < len(ccts); i++ {
+		cnt := ccts[i]
+		if cnt > float64(minreads) {
+			prob := BinomTest(cnt, total, globalP)
+			bins = append(bins, i)
+			counts = append(counts, cnt)
+			pvals = append(pvals, prob)
+		}
+	}
+
+	// `pvals` is list of p-values per eligible bin. `pval` is threshold for significance.
+	// Use global nTests for FDR correction
+	keepSlice = filterBinsbyFDR(bins, counts, pvals, pval, globalNTests, outprefix)
+
+	// merge overlapping and nearby peaks -----------------------------------------------
+	binsKeep := coverage.Subset(keepSlice)
+	binsKeepMerge := binsKeep.Merge()
+	peaks := mergeWithin(binsKeepMerge, within)
+	peaksFilt := filterPeakWidth(peaks, width)
+	return peaksFilt
+}
+
+// BinPvalPair stores bin index and p-value for sorting
+type BinPvalPair struct {
+	Bin  int
+	Pval float64
+}
+
 func filterBinsbyFDR(Bins []int, Counts []float64, Pvals []float64, Threshold float64, Tests int, outprefix string) []int {
 
 	keepBins := []int{}
 
-	// assign rank to each uniq pval
-	// init fdrDF with binID, counts, and pvals.
-	fdrDF := dataframe.New(
-		series.New(Bins, series.Int, "bin"),
-		series.New(Counts, series.Float, "counts"),
-		series.New(Pvals, series.Float, "pval"),
-	)
-	fdrDF = fdrDF.Arrange(dataframe.Sort("pval"))
-	fdrDF = assignRanks(fdrDF)
+	// Use a more memory-efficient approach: sort indices instead of full DataFrame
+	// Create pairs for sorting
+	pairs := make([]BinPvalPair, len(Bins))
+	for i := range Bins {
+		pairs[i] = BinPvalPair{Bin: Bins[i], Pval: Pvals[i]}
+	}
 
-	// fmt.Println("assigned ranks")
-	// fmt.Println(fdrDF)
+	// Sort by p-value (ascending) using Go's sort package
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].Pval < pairs[j].Pval
+	})
 
-	// create new series: [padj, keep].
-	// calculate padj for each pval
-	fdr := series.New([]float64{}, series.Float, "padj")
-	keep := series.New([]int{}, series.Int, "keep")
+	// Calculate ranks (accounting for ties)
+	pvalMap := make(map[float64]int)
+	rank := 0
+	for _, pair := range pairs {
+		if _, ok := pvalMap[pair.Pval]; !ok {
+			rank += 1
+			pvalMap[pair.Pval] = rank
+		}
+	}
 
-	for i := 0; i < fdrDF.Nrow(); i++ {
-
-		p := fdrDF.Elem(i, 2).Float()
-		r := fdrDF.Elem(i, 3).Float()
-
-		// ranks came from assignRanks
-		// padj = (n_test * pval) / rank
-		padj := float64(Tests) * float64(p) / float64(r)
+	// Calculate adjusted p-values and filter
+	for _, pair := range pairs {
+		r := float64(pvalMap[pair.Pval])
+		padj := float64(Tests) * pair.Pval / r
 		if padj >= 1 {
 			padj = 1
 		}
-
-		// collect money
-		fdr.Append(padj)
 		if padj < Threshold {
-			keep.Append(1)
-		} else {
-			keep.Append(0)
+			keepBins = append(keepBins, pair.Bin)
 		}
 	}
-
-	// create padj and keep columns in the DF
-	fdrDF = fdrDF.
-		Mutate(series.New(fdr, series.Float, "padj")).
-		Mutate(series.New(keep, series.Int, "keep"))
-
-	// filter and return significant peaks
-	fdrDF = fdrDF.Filter(dataframe.F{
-		Colname: "keep",
-		Comparator: series.Eq,
-		Comparando: 1},
-	)
-	for i := 0; i < fdrDF.Nrow(); i++ {
-		sigSlice, _ := fdrDF.Elem(i, 0).Int()
-		keepBins = append(keepBins, sigSlice)
-	}
-
-	// fmt.Println(fdrDF)
-	// fmt.Println(fdrDF.Drop([]int{0, 3, 5}).Describe()) // stat summary all columns except for BinID and keep.
 
 	return keepBins
 }
@@ -569,6 +791,25 @@ func binGenome(genome gn.Genome, step int, slide int) gn.GRanges {
 	wg.Wait()
 	close(input)
 	return <-output
+}
+
+// filterGRangesByChrom filters GRanges to only include entries for a specific chromosome
+func filterGRangesByChrom(gr gn.GRanges, chr string) gn.GRanges {
+	var keepIdx []int
+	for i := 0; i < len(gr.Seqnames); i++ {
+		if gr.Seqnames[i] == chr {
+			keepIdx = append(keepIdx, i)
+		}
+	}
+	if len(keepIdx) == 0 {
+		return gn.GRanges{
+			Seqnames: []string{},
+			Ranges:   []gn.Range{},
+			Strand:   []byte{},
+			Meta:     gn.Meta{},
+		}
+	}
+	return gr.Subset(keepIdx)
 }
 
 // filters unknown chromosome names from a strings slice

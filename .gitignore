@@ -2,3 +2,6 @@
 *.bai
 gopeaks
 *.bed
+gopeaks-linux-amd64
+test*.json
+test*.bed
